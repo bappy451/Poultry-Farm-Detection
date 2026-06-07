@@ -1,0 +1,158 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+function Resolve-UserPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BaseDir,
+        [Parameter(Mandatory = $true)]
+        [string]$RawPath
+    )
+
+    if ([System.IO.Path]::IsPathRooted($RawPath)) {
+        return [System.IO.Path]::GetFullPath($RawPath)
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path $BaseDir $RawPath))
+}
+
+function Format-CommandToken {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Token
+    )
+
+    if ($Token -match '[\s"`]') {
+        return '"' + $Token.Replace('"', '\"') + '"'
+    }
+    return $Token
+}
+
+function Format-CommandString {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Tokens
+    )
+
+    return (($Tokens | ForEach-Object { Format-CommandToken $_ }) -join ' ')
+}
+
+function Write-ProjectLogLine {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$LogFile,
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Line
+    )
+
+    $Line | Tee-Object -FilePath $LogFile -Append | Out-Host
+}
+
+function Start-ProjectLog {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$LogFile,
+        [Parameter(Mandatory = $true)]
+        [string]$CommandText,
+        [Parameter(Mandatory = $true)]
+        [string]$InvocationCwd
+    )
+
+    $parentDir = Split-Path -Parent $LogFile
+    if (-not [string]::IsNullOrWhiteSpace($parentDir)) {
+        New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+    }
+
+    Write-ProjectLogLine -LogFile $LogFile -Line ""
+    Write-ProjectLogLine -LogFile $LogFile -Line ("=" * 80)
+    Write-ProjectLogLine -LogFile $LogFile -Line "Command Log"
+    Write-ProjectLogLine -LogFile $LogFile -Line ("=" * 80)
+    Write-ProjectLogLine -LogFile $LogFile -Line ("Started   : " + (Get-Date -Format "yyyy-MM-ddTHH:mm:sszzz"))
+    Write-ProjectLogLine -LogFile $LogFile -Line ("Command   : " + $CommandText)
+    Write-ProjectLogLine -LogFile $LogFile -Line ("CWD       : " + $InvocationCwd)
+    Write-ProjectLogLine -LogFile $LogFile -Line ("Log file  : " + $LogFile)
+    Write-ProjectLogLine -LogFile $LogFile -Line ("=" * 80)
+    Write-ProjectLogLine -LogFile $LogFile -Line ("[logging] Appending command output to " + $LogFile)
+}
+
+function Write-ProjectException {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$LogFile,
+        [Parameter(Mandatory = $true)]
+        [System.Management.Automation.ErrorRecord]$ErrorRecord
+    )
+
+    Write-ProjectLogLine -LogFile $LogFile -Line "[logging] Wrapper failed with an exception:"
+    Write-ProjectLogLine -LogFile $LogFile -Line ("Exception type : " + $ErrorRecord.Exception.GetType().FullName)
+    Write-ProjectLogLine -LogFile $LogFile -Line ("Message        : " + $ErrorRecord.Exception.Message)
+    Write-ProjectLogLine -LogFile $LogFile -Line ("Category       : " + $ErrorRecord.CategoryInfo.ToString())
+    if ($null -ne $ErrorRecord.TargetObject) {
+        Write-ProjectLogLine -LogFile $LogFile -Line ("Target          : " + $ErrorRecord.TargetObject.ToString())
+    }
+    if (
+        $null -ne $ErrorRecord.InvocationInfo -and
+        -not [string]::IsNullOrWhiteSpace($ErrorRecord.InvocationInfo.PositionMessage)
+    ) {
+        Write-ProjectLogLine -LogFile $LogFile -Line "Position:"
+        Write-ProjectLogLine -LogFile $LogFile -Line $ErrorRecord.InvocationInfo.PositionMessage
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ErrorRecord.ScriptStackTrace)) {
+        Write-ProjectLogLine -LogFile $LogFile -Line "PowerShell stack trace:"
+        Write-ProjectLogLine -LogFile $LogFile -Line $ErrorRecord.ScriptStackTrace
+    }
+    if ($null -ne $ErrorRecord.Exception.InnerException) {
+        Write-ProjectLogLine -LogFile $LogFile -Line ("Inner exception: " + $ErrorRecord.Exception.InnerException.ToString())
+    }
+}
+
+function Finish-ProjectLog {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$LogFile,
+        [Parameter(Mandatory = $true)]
+        [int]$ExitCode,
+        [Parameter(Mandatory = $true)]
+        [System.Diagnostics.Stopwatch]$Stopwatch
+    )
+
+    $Stopwatch.Stop()
+    $elapsed = $Stopwatch.Elapsed
+    $duration = "{0:00}:{1:00}:{2:00}.{3:000}" -f [math]::Floor($elapsed.TotalHours), $elapsed.Minutes, $elapsed.Seconds, $elapsed.Milliseconds
+    $elapsedSeconds = $elapsed.TotalSeconds.ToString("F2", [System.Globalization.CultureInfo]::InvariantCulture)
+    Write-ProjectLogLine -LogFile $LogFile -Line (
+        "[logging] Finished (exit=" + $ExitCode +
+        ", finished=" + (Get-Date -Format "yyyy-MM-ddTHH:mm:sszzz") +
+        ", duration=" + $duration +
+        ", elapsed_seconds=" + $elapsedSeconds + ")"
+    )
+}
+
+function Resolve-PreferredPython {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CodeDir,
+        [string]$RequestedPython = ""
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($RequestedPython)) {
+        return $RequestedPython
+    }
+
+    $venvPython = Join-Path $CodeDir ".venv\Scripts\python.exe"
+    if (Test-Path $venvPython) {
+        return $venvPython
+    }
+
+    $pyLauncher = Get-Command py -ErrorAction SilentlyContinue
+    if ($null -ne $pyLauncher) {
+        return $pyLauncher.Source
+    }
+
+    $python = Get-Command python -ErrorAction SilentlyContinue
+    if ($null -ne $python) {
+        return $python.Source
+    }
+
+    throw "No Python interpreter was found. Create .venv first or pass --python PATH."
+}
