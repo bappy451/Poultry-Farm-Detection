@@ -452,6 +452,48 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_backbone_parser.add_argument("--device", default=None, help="Execution device, for example cpu or cuda:0.")
     inspect_backbone_parser.add_argument("--gradient-checkpointing", action="store_true")
 
+    inspect_segmentation_parser = _add_command_parser(
+        subparsers,
+        "inspect-segmentation",
+        help_text="Inspect LoRA-adapted ViT segmentation output shapes on one NAIP batch.",
+        description=dedent(
+            """
+            Load one batch from the NAIP self-supervised dataloader, run the band adapter,
+            optional LoRA-augmented ViT backbone, and a lightweight decoder head that
+            reconstructs a binary roof mask at full image resolution.
+
+            Use this to validate freezing behavior, LoRA wiring, precision resolution,
+            and segmentation output shape before training.
+            """
+        ).strip(),
+        epilog=dedent(
+            """
+            Examples:
+              poultry-geo inspect-segmentation tmp/test_jpg --batch-size 2 --crop-size 256 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --use-lora --freeze-backbone
+              poultry-geo inspect-segmentation tmp/test_jpg --batch-size 2 --crop-size 512 --channels 4 --precision bf16 --patch-size 16 --embed-dim 384 --depth 12 --num-heads 6 --use-lora --lora-rank 8 --decoder-hidden-channels 128
+            """
+        ).strip(),
+    )
+    inspect_segmentation_parser.add_argument("data_root")
+    inspect_segmentation_parser.add_argument("--batch-size", type=int, default=2)
+    inspect_segmentation_parser.add_argument("--crop-size", type=int, default=256)
+    inspect_segmentation_parser.add_argument("--channels", type=int, default=None)
+    inspect_segmentation_parser.add_argument("--precision", default="fp32", choices=["fp32", "fp16", "bf16", "nf4"])
+    inspect_segmentation_parser.add_argument("--patch-size", type=int, default=16)
+    inspect_segmentation_parser.add_argument("--embed-dim", type=int, required=True)
+    inspect_segmentation_parser.add_argument("--depth", type=int, required=True)
+    inspect_segmentation_parser.add_argument("--num-heads", type=int, required=True)
+    inspect_segmentation_parser.add_argument("--mlp-ratio", type=float, default=4.0)
+    inspect_segmentation_parser.add_argument("--num-workers", type=int, default=4)
+    inspect_segmentation_parser.add_argument("--device", default=None, help="Execution device, for example cpu, gpu, cuda:0, or mps.")
+    inspect_segmentation_parser.add_argument("--gradient-checkpointing", action="store_true")
+    inspect_segmentation_parser.add_argument("--use-lora", action="store_true")
+    inspect_segmentation_parser.add_argument("--freeze-backbone", action="store_true")
+    inspect_segmentation_parser.add_argument("--lora-rank", type=int, default=4)
+    inspect_segmentation_parser.add_argument("--lora-alpha", type=float, default=8.0)
+    inspect_segmentation_parser.add_argument("--lora-dropout", type=float, default=0.0)
+    inspect_segmentation_parser.add_argument("--decoder-hidden-channels", type=int, default=128)
+
     train_parser = _add_command_parser(subparsers, "train-yolo", help_text="Train one or more Ultralytics YOLO models.")
     train_parser.add_argument("data_path")
     train_parser.add_argument("project_dir")
@@ -930,6 +972,71 @@ def main(argv: list[str] | None = None) -> int:
                 f"patch_grid={patch_grid} "
                 f"requested_precision={backbone.requested_precision} "
                 f"resolved_precision={backbone.resolved_precision} "
+                f"device={device}"
+            )
+            return 0
+
+        if args.command == "inspect-segmentation":
+            import torch
+            import poultry_geo.naip_data as naip_data
+            import poultry_geo.ssl_models as ssl_models
+
+            device = _resolve_torch_device_alias(args.device)
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=r".*pin_memory.*no accelerator is found.*",
+                    category=UserWarning,
+                )
+                train_loader, _ = naip_data.get_dataloaders(
+                    args.data_root,
+                    batch_size=args.batch_size,
+                    crop_size=args.crop_size,
+                    channels=args.channels,
+                    precision=args.precision,
+                    num_workers=args.num_workers,
+                )
+                batch = next(iter(train_loader))
+            images = batch["image"]
+            images = images.to(device=device, non_blocking=True)
+
+            model = ssl_models.RemoteSensingSegmentationModel(
+                in_channels=int(images.shape[1]),
+                image_size=args.crop_size,
+                patch_size=args.patch_size,
+                embed_dim=args.embed_dim,
+                depth=args.depth,
+                num_heads=args.num_heads,
+                precision=args.precision,
+                gradient_checkpointing=args.gradient_checkpointing,
+                use_lora=args.use_lora,
+                freeze_backbone=args.freeze_backbone,
+                lora_rank=args.lora_rank,
+                lora_alpha=args.lora_alpha,
+                lora_dropout=args.lora_dropout,
+                decoder_hidden_channels=args.decoder_hidden_channels,
+                mlp_ratio=args.mlp_ratio,
+            ).to(device)
+            model.eval()
+
+            with torch.no_grad():
+                outputs = model.forward_with_intermediates(images)
+
+            patch_grid = (
+                int(outputs["adapted"].shape[2]) // args.patch_size,
+                int(outputs["adapted"].shape[3]) // args.patch_size,
+            )
+            print(
+                "inspect-segmentation "
+                f"input_shape={tuple(images.shape)} "
+                f"adapted_shape={tuple(outputs['adapted'].shape)} "
+                f"token_shape={tuple(outputs['tokens'].shape)} "
+                f"mask_shape={tuple(outputs['mask'].shape)} "
+                f"patch_grid={patch_grid} "
+                f"requested_precision={model.requested_precision} "
+                f"resolved_precision={model.resolved_precision} "
+                f"use_lora={model.use_lora} "
+                f"freeze_backbone={model.freeze_backbone} "
                 f"device={device}"
             )
             return 0

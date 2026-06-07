@@ -175,6 +175,41 @@ class _PatchEmbed(nn.Module):
         )
 
 
+class _PrecisionConv2d(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        *,
+        kernel_size: int | tuple[int, int],
+        stride: int | tuple[int, int] = 1,
+        padding: int | tuple[int, int] = 0,
+        precision: str = "fp32",
+    ) -> None:
+        super().__init__()
+        kernel_hw = _pair(kernel_size)
+        self.stride = _pair(stride)
+        self.padding = _pair(padding)
+        self.precision = precision
+        self.weight = nn.Parameter(torch.empty(out_channels, in_channels, kernel_hw[0], kernel_hw[1]))
+        self.bias = nn.Parameter(torch.zeros(out_channels))
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        nn.init.kaiming_uniform_(self.weight, a=5 ** 0.5)
+        nn.init.zeros_(self.bias)
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        compute_dtype = _runtime_compute_dtype(inputs.device, self.precision)
+        return F.conv2d(
+            inputs.to(dtype=compute_dtype),
+            self.weight.to(device=inputs.device, dtype=compute_dtype),
+            self.bias.to(device=inputs.device, dtype=compute_dtype),
+            stride=self.stride,
+            padding=self.padding,
+        )
+
+
 class _SelfAttention(nn.Module):
     def __init__(
         self,
@@ -270,6 +305,59 @@ class _TransformerBlock(nn.Module):
         outputs = inputs + self.attn(self.norm1(inputs))
         outputs = outputs + self.mlp(self.norm2(outputs))
         return outputs
+
+
+class LoRALinear(nn.Module):
+    def __init__(
+        self,
+        base_layer: nn.Module,
+        *,
+        rank: int,
+        alpha: float = 1.0,
+        dropout: float = 0.0,
+        precision: str = "fp32",
+    ) -> None:
+        super().__init__()
+        if rank <= 0:
+            raise ValueError("rank must be a positive integer.")
+        if alpha <= 0:
+            raise ValueError("alpha must be positive.")
+        if dropout < 0:
+            raise ValueError("dropout cannot be negative.")
+        in_features = getattr(base_layer, "in_features", None)
+        out_features = getattr(base_layer, "out_features", None)
+        if in_features is None or out_features is None:
+            raise TypeError("LoRALinear expects a base layer with in_features and out_features.")
+
+        self.base_layer = base_layer
+        self.rank = rank
+        self.alpha = alpha
+        self.scaling = alpha / rank
+        self.precision = precision
+        self.in_features = int(in_features)
+        self.out_features = int(out_features)
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+        self.lora_down = nn.Parameter(torch.empty(rank, self.in_features))
+        self.lora_up = nn.Parameter(torch.empty(self.out_features, rank))
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        nn.init.kaiming_uniform_(self.lora_down, a=5 ** 0.5)
+        nn.init.zeros_(self.lora_up)
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        base_outputs = self.base_layer(inputs)
+        compute_dtype = _runtime_compute_dtype(inputs.device, self.precision)
+        output_dtype = base_outputs.dtype
+        down = F.linear(
+            self.dropout(inputs).to(dtype=compute_dtype),
+            self.lora_down.to(device=inputs.device, dtype=compute_dtype),
+        )
+        delta = F.linear(
+            down,
+            self.lora_up.to(device=inputs.device, dtype=compute_dtype),
+        ) * self.scaling
+        return (base_outputs.to(dtype=compute_dtype) + delta).to(dtype=output_dtype)
 
 
 class BandAdapter(nn.Module):
@@ -437,7 +525,243 @@ class RemoteSensingViT(nn.Module):
         return embeddings.to(device=device, dtype=dtype)
 
 
+def inject_lora_into_vit(
+    model: RemoteSensingViT,
+    *,
+    rank: int,
+    alpha: float = 1.0,
+    dropout: float = 0.0,
+    target_modules: tuple[str, ...] = ("qkv", "proj"),
+    freeze_backbone: bool = False,
+) -> RemoteSensingViT:
+    if freeze_backbone:
+        model.requires_grad_(False)
+
+    targets = set(target_modules)
+    for block in model.blocks:
+        if "qkv" in targets and not isinstance(block.attn.qkv, LoRALinear):
+            block.attn.qkv = LoRALinear(
+                block.attn.qkv,
+                rank=rank,
+                alpha=alpha,
+                dropout=dropout,
+                precision=model.resolved_precision,
+            )
+        if "proj" in targets and not isinstance(block.attn.proj, LoRALinear):
+            block.attn.proj = LoRALinear(
+                block.attn.proj,
+                rank=rank,
+                alpha=alpha,
+                dropout=dropout,
+                precision=model.resolved_precision,
+            )
+
+    if freeze_backbone:
+        for name, parameter in model.named_parameters():
+            if "lora_" in name:
+                parameter.requires_grad_(True)
+
+    model.use_lora = True
+    return model
+
+
+class DecoderHead(nn.Module):
+    def __init__(
+        self,
+        *,
+        embed_dim: int,
+        output_size: int | tuple[int, int],
+        hidden_channels: int = 128,
+        out_channels: int = 1,
+        precision: str = "fp32",
+    ) -> None:
+        super().__init__()
+        if embed_dim <= 0:
+            raise ValueError("embed_dim must be a positive integer.")
+        if hidden_channels <= 0:
+            raise ValueError("hidden_channels must be a positive integer.")
+        if out_channels <= 0:
+            raise ValueError("out_channels must be a positive integer.")
+
+        self.embed_dim = embed_dim
+        self.output_size = _pair(output_size)
+        self.hidden_channels = hidden_channels
+        self.out_channels = out_channels
+        self.requested_precision = _validate_precision(precision)
+        self.resolved_precision = _resolve_precision(self.requested_precision, allow_nf4=False)
+        mid_channels = max(1, hidden_channels // 2)
+
+        self.proj = _PrecisionConv2d(
+            embed_dim,
+            hidden_channels,
+            kernel_size=1,
+            precision=self.resolved_precision,
+        )
+        self.refine1 = _PrecisionConv2d(
+            hidden_channels,
+            hidden_channels,
+            kernel_size=3,
+            padding=1,
+            precision=self.resolved_precision,
+        )
+        self.refine2 = _PrecisionConv2d(
+            hidden_channels,
+            mid_channels,
+            kernel_size=3,
+            padding=1,
+            precision=self.resolved_precision,
+        )
+        self.head = _PrecisionConv2d(
+            mid_channels,
+            out_channels,
+            kernel_size=1,
+            precision=self.resolved_precision,
+        )
+
+    def forward(
+        self,
+        patch_embeddings: torch.Tensor,
+        *,
+        grid_size: tuple[int, int] | None = None,
+    ) -> torch.Tensor:
+        if patch_embeddings.ndim != 3:
+            raise ValueError("DecoderHead expects inputs with shape [B, N, D].")
+        if patch_embeddings.shape[-1] != self.embed_dim:
+            raise ValueError(
+                f"DecoderHead expected embedding dimension {self.embed_dim}, received {patch_embeddings.shape[-1]}."
+            )
+
+        if grid_size is None:
+            side = round(patch_embeddings.shape[1] ** 0.5)
+            if side * side != patch_embeddings.shape[1]:
+                raise ValueError("grid_size must be provided when token count is not a perfect square.")
+            grid_size = (side, side)
+        if grid_size[0] * grid_size[1] != patch_embeddings.shape[1]:
+            raise ValueError("grid_size must match the number of patch tokens.")
+
+        outputs = patch_embeddings.transpose(1, 2).reshape(
+            patch_embeddings.shape[0],
+            self.embed_dim,
+            grid_size[0],
+            grid_size[1],
+        )
+        outputs = self.proj(outputs)
+        outputs = F.gelu(outputs)
+        outputs = F.interpolate(outputs, size=self.output_size, mode="bilinear", align_corners=False)
+        outputs = self.refine1(outputs)
+        outputs = F.gelu(outputs)
+        outputs = self.refine2(outputs)
+        outputs = F.gelu(outputs)
+        outputs = self.head(outputs)
+        return outputs.to(dtype=_output_dtype(self.resolved_precision))
+
+
+class SegmentationHead(DecoderHead):
+    def __init__(
+        self,
+        *,
+        embed_dim: int,
+        output_size: int | tuple[int, int],
+        hidden_channels: int = 128,
+        precision: str = "fp32",
+    ) -> None:
+        super().__init__(
+            embed_dim=embed_dim,
+            output_size=output_size,
+            hidden_channels=hidden_channels,
+            out_channels=1,
+            precision=precision,
+        )
+
+
+class RemoteSensingSegmentationModel(nn.Module):
+    def __init__(
+        self,
+        *,
+        in_channels: int,
+        image_size: int | tuple[int, int],
+        patch_size: int | tuple[int, int],
+        embed_dim: int,
+        depth: int,
+        num_heads: int,
+        precision: str = "fp32",
+        gradient_checkpointing: bool = False,
+        use_lora: bool = False,
+        freeze_backbone: bool = False,
+        lora_rank: int = 4,
+        lora_alpha: float = 8.0,
+        lora_dropout: float = 0.0,
+        decoder_hidden_channels: int = 128,
+        mlp_ratio: float = 4.0,
+        drop_rate: float = 0.0,
+        attn_drop_rate: float = 0.0,
+    ) -> None:
+        super().__init__()
+        self.requested_precision = _validate_precision(precision)
+        self.use_lora = use_lora
+        self.freeze_backbone = freeze_backbone
+        self.image_size = _pair(image_size)
+        self.patch_size = _pair(patch_size)
+
+        self.adapter = BandAdapter(in_channels=in_channels, out_channels=3, precision=precision)
+        self.backbone = RemoteSensingViT(
+            image_size=self.image_size,
+            patch_size=self.patch_size,
+            embed_dim=embed_dim,
+            depth=depth,
+            num_heads=num_heads,
+            mlp_ratio=mlp_ratio,
+            precision=precision,
+            gradient_checkpointing=gradient_checkpointing,
+            drop_rate=drop_rate,
+            attn_drop_rate=attn_drop_rate,
+        )
+        if freeze_backbone and not use_lora:
+            self.backbone.requires_grad_(False)
+        if use_lora:
+            inject_lora_into_vit(
+                self.backbone,
+                rank=lora_rank,
+                alpha=lora_alpha,
+                dropout=lora_dropout,
+                freeze_backbone=freeze_backbone,
+            )
+        self.head = SegmentationHead(
+            embed_dim=embed_dim,
+            output_size=self.image_size,
+            hidden_channels=decoder_hidden_channels,
+            precision=precision,
+        )
+        self.resolved_precision = self.backbone.resolved_precision
+
+    def forward_features(self, inputs: torch.Tensor) -> torch.Tensor:
+        adapted = self.adapter(inputs)
+        return self.backbone.forward_features(adapted)
+
+    def forward_with_intermediates(self, inputs: torch.Tensor) -> dict[str, torch.Tensor]:
+        adapted = self.adapter(inputs)
+        tokens = self.backbone.forward_features(adapted)
+        grid_size = (
+            int(adapted.shape[2]) // self.patch_size[0],
+            int(adapted.shape[3]) // self.patch_size[1],
+        )
+        mask = self.head(tokens, grid_size=grid_size)
+        return {
+            "adapted": adapted,
+            "tokens": tokens,
+            "mask": mask,
+        }
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        return self.forward_with_intermediates(inputs)["mask"]
+
+
 __all__ = [
     "BandAdapter",
+    "DecoderHead",
+    "LoRALinear",
     "RemoteSensingViT",
+    "RemoteSensingSegmentationModel",
+    "SegmentationHead",
+    "inject_lora_into_vit",
 ]

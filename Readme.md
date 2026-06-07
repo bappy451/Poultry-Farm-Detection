@@ -265,6 +265,62 @@ This prints:
 - token tensor shape `[B, num_patches, embed_dim]`
 - patch grid, requested precision, resolved precision, and device
 
+If the wrapper picks the wrong interpreter on a machine with multiple Python
+installs, pass `--python` explicitly:
+
+- Windows: `--python "$env:CONDA_PREFIX\python.exe"`
+- macOS/Linux: `--python "$CONDA_PREFIX/bin/python"`
+
+## Inspect Segmentation Model
+
+`poultry_geo.ssl_models` also provides a LoRA-ready segmentation stack for
+roof-mask inspection runs:
+
+```python
+from poultry_geo.ssl_models import RemoteSensingSegmentationModel
+
+model = RemoteSensingSegmentationModel(
+    in_channels=4,
+    image_size=256,
+    patch_size=16,
+    embed_dim=192,
+    depth=8,
+    num_heads=6,
+    precision="bf16",
+    use_lora=True,
+    freeze_backbone=True,
+)
+```
+
+To run one real batch through the adapter, ViT backbone, and decoder head and
+print tensor shapes:
+
+macOS/Linux:
+
+```bash
+./scripts/inspect_segmentation.sh --python "$CONDA_PREFIX/bin/python" --data-root ./tmp/test_jpg --batch-size 2 --crop-size 256 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --precision bf16 --use-lora --freeze-backbone --device mps
+```
+
+Windows:
+
+```powershell
+.\scripts\inspect_segmentation.cmd --python "$env:CONDA_PREFIX\python.exe" --data-root .\tmp\test_jpg --batch-size 2 --crop-size 256 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --precision bf16 --use-lora --freeze-backbone --device gpu
+```
+
+Direct CLI on either platform:
+
+```bash
+python -m poultry_geo inspect-segmentation tmp/test_jpg --batch-size 2 --crop-size 256 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --precision bf16 --use-lora --freeze-backbone --device cuda
+```
+
+This prints:
+
+- input tensor shape `[B, n, H, W]`
+- adapted tensor shape `[B, 3, H, W]`
+- token tensor shape `[B, num_patches, embed_dim]`
+- mask tensor shape `[B, 1, H, W]`
+- patch grid, requested precision, resolved precision, LoRA flags, and device
+
 On Windows, use:
 
 ```powershell

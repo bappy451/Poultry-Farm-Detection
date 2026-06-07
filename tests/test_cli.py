@@ -125,6 +125,50 @@ def test_cli_parses_inspect_backbone_command() -> None:
     assert args.gradient_checkpointing is True
 
 
+def test_cli_parses_inspect_segmentation_command() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "inspect-segmentation",
+            "tmp/test_jpg",
+            "--batch-size",
+            "2",
+            "--crop-size",
+            "256",
+            "--channels",
+            "4",
+            "--precision",
+            "bf16",
+            "--patch-size",
+            "16",
+            "--embed-dim",
+            "192",
+            "--depth",
+            "8",
+            "--num-heads",
+            "6",
+            "--use-lora",
+            "--freeze-backbone",
+            "--lora-rank",
+            "8",
+            "--decoder-hidden-channels",
+            "96",
+        ]
+    )
+
+    assert args.command == "inspect-segmentation"
+    assert args.data_root == "tmp/test_jpg"
+    assert args.channels == 4
+    assert args.precision == "bf16"
+    assert args.embed_dim == 192
+    assert args.depth == 8
+    assert args.num_heads == 6
+    assert args.use_lora is True
+    assert args.freeze_backbone is True
+    assert args.lora_rank == 8
+    assert args.decoder_hidden_channels == 96
+
+
 def test_resolve_torch_device_alias_supports_gpu_name(monkeypatch: pytest.MonkeyPatch) -> None:
     torch = pytest.importorskip("torch")
 
@@ -203,6 +247,9 @@ def test_windows_wrappers_exist_and_document_logging() -> None:
     inspect_ps1 = repo_root / "scripts" / "inspect_backbone.ps1"
     inspect_cmd = repo_root / "scripts" / "inspect_backbone.cmd"
     inspect_sh = repo_root / "scripts" / "inspect_backbone.sh"
+    inspect_seg_ps1 = repo_root / "scripts" / "inspect_segmentation.ps1"
+    inspect_seg_cmd = repo_root / "scripts" / "inspect_segmentation.cmd"
+    inspect_seg_sh = repo_root / "scripts" / "inspect_segmentation.sh"
     common_ps1 = repo_root / "scripts" / "windows_common.ps1"
 
     assert poultry_ps1.exists()
@@ -212,6 +259,9 @@ def test_windows_wrappers_exist_and_document_logging() -> None:
     assert inspect_ps1.exists()
     assert inspect_cmd.exists()
     assert inspect_sh.exists()
+    assert inspect_seg_ps1.exists()
+    assert inspect_seg_cmd.exists()
+    assert inspect_seg_sh.exists()
     assert common_ps1.exists()
 
     poultry_text = poultry_ps1.read_text(encoding="utf-8")
@@ -219,6 +269,9 @@ def test_windows_wrappers_exist_and_document_logging() -> None:
     inspect_ps1_text = inspect_ps1.read_text(encoding="utf-8")
     inspect_cmd_text = inspect_cmd.read_text(encoding="utf-8")
     inspect_sh_text = inspect_sh.read_text(encoding="utf-8")
+    inspect_seg_ps1_text = inspect_seg_ps1.read_text(encoding="utf-8")
+    inspect_seg_cmd_text = inspect_seg_cmd.read_text(encoding="utf-8")
+    inspect_seg_sh_text = inspect_seg_sh.read_text(encoding="utf-8")
     poultry_cmd_text = poultry_cmd.read_text(encoding="utf-8")
     slice_cmd_text = slice_cmd.read_text(encoding="utf-8")
     common_text = common_ps1.read_text(encoding="utf-8")
@@ -228,8 +281,11 @@ def test_windows_wrappers_exist_and_document_logging() -> None:
     assert "ExecutionPolicy Bypass" in poultry_cmd_text
     assert "ExecutionPolicy Bypass" in slice_cmd_text
     assert "ExecutionPolicy Bypass" in inspect_cmd_text
+    assert "ExecutionPolicy Bypass" in inspect_seg_cmd_text
     assert "inspect-backbone" in inspect_ps1_text
     assert "inspect-backbone" in inspect_sh_text
+    assert "inspect-segmentation" in inspect_seg_ps1_text
+    assert "inspect-segmentation" in inspect_seg_sh_text
     assert "Start-ProjectLog" in common_text
     assert "Finish-ProjectLog" in common_text
     assert "Write-ProjectException" in common_text
@@ -360,6 +416,100 @@ def test_inspect_backbone_command_prints_shape_summary(monkeypatch: pytest.Monke
     assert "patch_grid=(14, 14)" in stdout
     assert "requested_precision=nf4" in stdout
     assert "resolved_precision=bf16" in stdout
+
+
+def test_inspect_segmentation_command_prints_mask_summary(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    torch = pytest.importorskip("torch")
+
+    import poultry_geo.cli as cli
+    import poultry_geo.naip_data as naip_data
+    import poultry_geo.ssl_models as ssl_models
+
+    batch = {
+        "image": torch.ones((2, 4, 256, 256), dtype=torch.float32),
+        "path": ["a.jpg", "b.jpg"],
+    }
+
+    class _FakeLoader(list):
+        pass
+
+    def fake_get_dataloaders(*args, **kwargs):
+        return _FakeLoader([batch]), _FakeLoader([batch])
+
+    class FakeSegmentationModel(torch.nn.Module):
+        def __init__(
+            self,
+            *,
+            in_channels: int,
+            image_size: int,
+            patch_size: int,
+            embed_dim: int,
+            depth: int,
+            num_heads: int,
+            precision: str = "fp32",
+            use_lora: bool = False,
+            freeze_backbone: bool = False,
+            **kwargs,
+        ):
+            super().__init__()
+            self.requested_precision = precision
+            self.resolved_precision = "bf16" if precision == "nf4" else precision
+            self.use_lora = use_lora
+            self.freeze_backbone = freeze_backbone
+
+        def forward_with_intermediates(self, inputs: torch.Tensor) -> dict[str, torch.Tensor]:
+            adapted = inputs[:, :3].to(dtype=torch.bfloat16)
+            tokens = torch.ones((inputs.shape[0], 256, 64), device=inputs.device, dtype=torch.bfloat16)
+            mask = torch.ones((inputs.shape[0], 1, 256, 256), device=inputs.device, dtype=torch.bfloat16)
+            return {
+                "adapted": adapted,
+                "tokens": tokens,
+                "mask": mask,
+            }
+
+        def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+            return self.forward_with_intermediates(inputs)["mask"]
+
+    monkeypatch.setattr(naip_data, "get_dataloaders", fake_get_dataloaders)
+    monkeypatch.setattr(ssl_models, "RemoteSensingSegmentationModel", FakeSegmentationModel)
+
+    exit_code = cli.main(
+        [
+            "--no-log",
+            "--no-progress",
+            "inspect-segmentation",
+            "tmp/test_jpg",
+            "--batch-size",
+            "2",
+            "--crop-size",
+            "256",
+            "--channels",
+            "4",
+            "--precision",
+            "nf4",
+            "--patch-size",
+            "16",
+            "--embed-dim",
+            "64",
+            "--depth",
+            "2",
+            "--num-heads",
+            "4",
+            "--use-lora",
+            "--freeze-backbone",
+        ]
+    )
+
+    assert exit_code == 0
+    stdout = capsys.readouterr().out
+    assert "input_shape=(2, 4, 256, 256)" in stdout
+    assert "adapted_shape=(2, 3, 256, 256)" in stdout
+    assert "token_shape=(2, 256, 64)" in stdout
+    assert "mask_shape=(2, 1, 256, 256)" in stdout
+    assert "requested_precision=nf4" in stdout
+    assert "resolved_precision=bf16" in stdout
+    assert "use_lora=True" in stdout
+    assert "freeze_backbone=True" in stdout
 
 
 def test_cli_help_appends_to_single_log_file(tmp_path: Path) -> None:
