@@ -24,6 +24,7 @@ dev = [
   "pytest>=8.2",
 ]
 ml = [
+  "bitsandbytes>=0.43",
   "matplotlib>=3.8",
   "opencv-python>=4.10",
   "pycocotools>=2.0",

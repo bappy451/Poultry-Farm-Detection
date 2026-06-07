@@ -96,6 +96,10 @@ def _resolve_torch_device_alias(device: str | None):
     return torch.device(device)
 
 
+def _resolve_data_precision(precision: str) -> str:
+    return "bf16" if precision == "nf4" else precision
+
+
 def _add_command_parser(
     subparsers: argparse._SubParsersAction,
     name: str,
@@ -493,6 +497,50 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_segmentation_parser.add_argument("--lora-alpha", type=float, default=8.0)
     inspect_segmentation_parser.add_argument("--lora-dropout", type=float, default=0.0)
     inspect_segmentation_parser.add_argument("--decoder-hidden-channels", type=int, default=128)
+
+    train_mim_parser = _add_command_parser(
+        subparsers,
+        "train-mim",
+        help_text="Train a masked image modeling SSL run on NAIP tiles.",
+        description=dedent(
+            """
+            Train a MAE-style masked image modeling objective over NAIP tiles using the
+            custom band adapter and RemoteSensingViT backbone.
+
+            This command supports FP32, FP16, BF16, and NF4/QLoRA-style low-memory runs.
+            """
+        ).strip(),
+        epilog=dedent(
+            """
+            Examples:
+              poultry-geo train-mim tmp/test_jpg runs/mim --batch-size 4 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --epochs 1 --precision bf16
+              poultry-geo train-mim tmp/test_jpg runs/mim-nf4 --batch-size 4 --crop-size 224 --channels 4 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --epochs 1 --precision nf4 --use-lora --freeze-backbone
+            """
+        ).strip(),
+    )
+    train_mim_parser.add_argument("data_root")
+    train_mim_parser.add_argument("output_dir")
+    train_mim_parser.add_argument("--batch-size", type=int, default=4)
+    train_mim_parser.add_argument("--crop-size", type=int, default=224)
+    train_mim_parser.add_argument("--channels", type=int, default=None)
+    train_mim_parser.add_argument("--precision", default="fp32", choices=["fp32", "fp16", "bf16", "nf4"])
+    train_mim_parser.add_argument("--patch-size", type=int, default=16)
+    train_mim_parser.add_argument("--embed-dim", type=int, required=True)
+    train_mim_parser.add_argument("--depth", type=int, required=True)
+    train_mim_parser.add_argument("--num-heads", type=int, required=True)
+    train_mim_parser.add_argument("--mlp-ratio", type=float, default=4.0)
+    train_mim_parser.add_argument("--mask-ratio", type=float, default=0.75)
+    train_mim_parser.add_argument("--num-workers", type=int, default=4)
+    train_mim_parser.add_argument("--epochs", type=int, default=1)
+    train_mim_parser.add_argument("--learning-rate", type=float, default=1e-4)
+    train_mim_parser.add_argument("--weight-decay", type=float, default=0.05)
+    train_mim_parser.add_argument("--device", default=None, help="Execution device, for example cpu, gpu, cuda:0, or mps.")
+    train_mim_parser.add_argument("--gradient-checkpointing", action="store_true")
+    train_mim_parser.add_argument("--use-lora", action="store_true")
+    train_mim_parser.add_argument("--freeze-backbone", action="store_true")
+    train_mim_parser.add_argument("--lora-rank", type=int, default=4)
+    train_mim_parser.add_argument("--lora-alpha", type=float, default=8.0)
+    train_mim_parser.add_argument("--lora-dropout", type=float, default=0.0)
 
     train_parser = _add_command_parser(subparsers, "train-yolo", help_text="Train one or more Ultralytics YOLO models.")
     train_parser.add_argument("data_path")
@@ -1037,6 +1085,79 @@ def main(argv: list[str] | None = None) -> int:
                 f"resolved_precision={model.resolved_precision} "
                 f"use_lora={model.use_lora} "
                 f"freeze_backbone={model.freeze_backbone} "
+                f"device={device}"
+            )
+            return 0
+
+        if args.command == "train-mim":
+            import poultry_geo.naip_data as naip_data
+            import poultry_geo.ssl_models as ssl_models
+            import poultry_geo.training as training
+
+            device = _resolve_torch_device_alias(args.device)
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=r".*pin_memory.*no accelerator is found.*",
+                    category=UserWarning,
+                )
+                train_loader, val_loader = naip_data.get_dataloaders(
+                    args.data_root,
+                    batch_size=args.batch_size,
+                    crop_size=args.crop_size,
+                    channels=args.channels,
+                    precision=_resolve_data_precision(args.precision),
+                    num_workers=args.num_workers,
+                )
+
+            quantization_config = (
+                ssl_models.build_nf4_quantization_config()
+                if args.precision == "nf4"
+                else None
+            )
+            model_in_channels = args.channels or getattr(getattr(train_loader, "dataset", None), "_expected_channels", 3)
+            model = ssl_models.RemoteSensingMIMModel(
+                in_channels=model_in_channels,
+                image_size=args.crop_size,
+                patch_size=args.patch_size,
+                embed_dim=args.embed_dim,
+                depth=args.depth,
+                num_heads=args.num_heads,
+                precision=args.precision,
+                mask_ratio=args.mask_ratio,
+                gradient_checkpointing=args.gradient_checkpointing,
+                use_lora=args.use_lora,
+                freeze_backbone=args.freeze_backbone,
+                lora_rank=args.lora_rank,
+                lora_alpha=args.lora_alpha,
+                lora_dropout=args.lora_dropout,
+                mlp_ratio=args.mlp_ratio,
+                quantization_config=quantization_config,
+            )
+            optimizer = __import__("torch").optim.AdamW(
+                [parameter for parameter in model.parameters() if parameter.requires_grad],
+                lr=args.learning_rate,
+                weight_decay=args.weight_decay,
+            )
+            trainer = training.SSLTrainer(
+                model,
+                train_loader,
+                optimizer,
+                val_loader=val_loader,
+                device=device,
+                precision=args.precision,
+            )
+            summary = trainer.fit(args.epochs, args.output_dir)
+            print(
+                "train-mim "
+                f"output_dir={summary.output_dir} "
+                f"epochs={summary.epochs} "
+                f"train_batches={summary.train_batches} "
+                f"val_batches={summary.val_batches} "
+                f"final_train_loss={summary.final_train_loss} "
+                f"final_val_loss={summary.final_val_loss} "
+                f"requested_precision={model.requested_precision} "
+                f"resolved_precision={model.resolved_precision} "
                 f"device={device}"
             )
             return 0

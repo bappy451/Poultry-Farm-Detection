@@ -321,6 +321,88 @@ This prints:
 - mask tensor shape `[B, 1, H, W]`
 - patch grid, requested precision, resolved precision, LoRA flags, and device
 
+## Train MIM SSL
+
+`poultry_geo.ssl_models` and `poultry_geo.training` now provide a MAE-style
+masked image modeling path for self-supervised pretraining:
+
+```python
+from torch.optim import AdamW
+
+from poultry_geo.naip_data import get_dataloaders
+from poultry_geo.ssl_models import RemoteSensingMIMModel
+from poultry_geo.training import SSLTrainer
+
+train_loader, val_loader = get_dataloaders(
+    "tmp/test_jpg",
+    batch_size=4,
+    crop_size=224,
+    channels=3,
+    precision="bf16",
+    num_workers=4,
+)
+model = RemoteSensingMIMModel(
+    in_channels=3,
+    image_size=224,
+    patch_size=16,
+    embed_dim=192,
+    depth=8,
+    num_heads=6,
+    precision="bf16",
+    mask_ratio=0.75,
+)
+optimizer = AdamW(
+    [parameter for parameter in model.parameters() if parameter.requires_grad],
+    lr=1e-4,
+    weight_decay=0.05,
+)
+trainer = SSLTrainer(
+    model,
+    train_loader,
+    optimizer,
+    val_loader=val_loader,
+    device="cuda",
+    precision="bf16",
+)
+summary = trainer.fit(epochs=1, output_dir="runs/mim-smoke")
+```
+
+To run one real SSL smoke training job:
+
+macOS/Linux:
+
+```bash
+./scripts/train_mim.sh --python "$CONDA_PREFIX/bin/python" --data-root ./tmp/test_jpg --output-dir ./runs/mim-smoke --batch-size 4 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --epochs 1 --precision fp16 --device mps
+```
+
+Windows:
+
+```powershell
+.\scripts\train_mim.cmd --python "$env:CONDA_PREFIX\python.exe" --data-root .\tmp\test_jpg --output-dir .\runs\mim-smoke --batch-size 4 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --epochs 1 --precision bf16 --device gpu
+```
+
+Direct CLI on either platform:
+
+```bash
+python -m poultry_geo train-mim tmp/test_jpg runs/mim-smoke --batch-size 4 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --epochs 1 --precision bf16 --device cuda
+```
+
+NF4 / QLoRA-style run:
+
+```bash
+python -m poultry_geo train-mim tmp/test_jpg runs/mim-nf4 --batch-size 4 --crop-size 224 --channels 4 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --epochs 1 --precision nf4 --use-lora --freeze-backbone --device cuda
+```
+
+This writes:
+
+- `last.pt`
+- `best.pt`
+- `metrics.json`
+
+The `nf4` path expects `bitsandbytes` when 4-bit loading is available. If it is
+missing or unsupported on the current machine, the run falls back to BF16 and
+keeps the same command surface.
+
 On Windows, use:
 
 ```powershell

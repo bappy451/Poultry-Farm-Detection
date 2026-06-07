@@ -4,6 +4,7 @@
 #   python -m pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
 # If you skip that step, pip may satisfy `torch>=...` with a CPU-only build.
 -e .[dev,ml]
+bitsandbytes>=0.43
 matplotlib>=3.8
 pycocotools>=2.0
 seaborn>=0.13
