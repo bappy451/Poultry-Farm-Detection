@@ -182,6 +182,38 @@ The package can be run either as the installed console script or directly throug
 .venv/bin/python scripts/poultry_geo.py --help
 ```
 
+## NAIP Self-Supervised Data Loading
+
+`poultry_geo.naip_data` provides a PyTorch input pipeline for recursively nested
+NAIP tiles:
+
+```python
+from poultry_geo.naip_data import NAIPDataset, get_dataloaders
+
+train_loader, val_loader = get_dataloaders(
+    "tmp/test_jpg",
+    batch_size=64,
+    crop_size=224,
+    precision="bf16",
+    num_workers=8,
+    prefetch_factor=4,
+)
+
+batch = next(iter(train_loader))
+images = batch["image"]  # [B, C, H, W], CPU tensor
+paths = batch["path"]
+```
+
+The dataset supports RGB JPG/PNG, multi-band GeoTIFF, and CHW/HWC NPY arrays.
+Training samples receive synchronized random crops and flips across all bands,
+plus channel-aware color jitter. Validation uses deterministic center crops.
+Train/validation splitting occurs by parent source directory to prevent adjacent
+tiles from the same source raster leaking across splits. Distributed samplers
+are selected automatically after `torch.distributed` is initialized.
+
+Input precision may be `fp32`, `fp16`, or `bf16`. NF4 is model-weight
+quantization and is intentionally not used as an image tensor dtype.
+
 On Windows, use:
 
 ```powershell
