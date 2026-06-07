@@ -128,6 +128,48 @@ function Finish-ProjectLog {
     )
 }
 
+function Invoke-ProjectNativeCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Executable,
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments,
+        [string]$LogFile = "",
+        [switch]$CaptureToLog
+    )
+
+    $commandLine = (Format-CommandString (@($Executable) + $Arguments)) + " 2>&1"
+    $previousProgressLog = $env:POULTRY_PROGRESS_LOG
+    $progressEventLog = ""
+    try {
+        if ($CaptureToLog) {
+            if ([string]::IsNullOrWhiteSpace($LogFile)) {
+                throw "LogFile is required when CaptureToLog is enabled."
+            }
+            $progressEventLog = $LogFile + ".progress." + $PID + ".tmp"
+            $env:POULTRY_PROGRESS_LOG = $progressEventLog
+            & cmd.exe /d /c $commandLine |
+                Tee-Object -FilePath $LogFile -Append |
+                Out-Host
+        }
+        else {
+            & cmd.exe /d /c $commandLine | Out-Host
+        }
+        return $LASTEXITCODE
+    }
+    finally {
+        $env:POULTRY_PROGRESS_LOG = $previousProgressLog
+        if (
+            $CaptureToLog -and
+            -not [string]::IsNullOrWhiteSpace($progressEventLog) -and
+            (Test-Path -LiteralPath $progressEventLog)
+        ) {
+            Get-Content -LiteralPath $progressEventLog | Add-Content -LiteralPath $LogFile
+            Remove-Item -LiteralPath $progressEventLog
+        }
+    }
+}
+
 function Resolve-PreferredPython {
     param(
         [Parameter(Mandatory = $true)]
@@ -136,12 +178,38 @@ function Resolve-PreferredPython {
     )
 
     if (-not [string]::IsNullOrWhiteSpace($RequestedPython)) {
-        return $RequestedPython
+        $expandedPython = $ExecutionContext.InvokeCommand.ExpandString($RequestedPython)
+        if ([System.IO.Path]::IsPathRooted($expandedPython)) {
+            return [System.IO.Path]::GetFullPath($expandedPython)
+        }
+        return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $expandedPython))
     }
 
     $venvPython = Join-Path $CodeDir ".venv\Scripts\python.exe"
     if (Test-Path $venvPython) {
         return $venvPython
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:CONDA_PREFIX)) {
+        $condaPython = Join-Path $env:CONDA_PREFIX "python.exe"
+        if (Test-Path $condaPython) {
+            return $condaPython
+        }
+    }
+
+    $condaCommand = Get-Command conda -ErrorAction SilentlyContinue
+    if ($null -ne $condaCommand) {
+        try {
+            $condaBase = (& $condaCommand.Source info --base 2>$null | Select-Object -First 1).Trim()
+            if (-not [string]::IsNullOrWhiteSpace($condaBase)) {
+                $projectEnvPython = Join-Path $condaBase "envs\poultry-geo\python.exe"
+                if (Test-Path $projectEnvPython) {
+                    return $projectEnvPython
+                }
+            }
+        }
+        catch {
+        }
     }
 
     $pyLauncher = Get-Command py -ErrorAction SilentlyContinue

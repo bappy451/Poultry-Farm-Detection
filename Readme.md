@@ -129,9 +129,14 @@ From the `Code` directory on Windows:
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
 .\.venv\Scripts\pip.exe install -e .
 .\.venv\Scripts\pip.exe install -r requirements-ml.txt
 ```
+
+If you want NVIDIA GPU support on Windows or Linux, install the official CUDA-enabled
+PyTorch wheel first as shown above. Otherwise `requirements-ml.txt` may resolve to a
+CPU-only Torch build.
 
 Then run either the full CLI wrapper:
 
@@ -213,6 +218,52 @@ are selected automatically after `torch.distributed` is initialized.
 
 Input precision may be `fp32`, `fp16`, or `bf16`. NF4 is model-weight
 quantization and is intentionally not used as an image tensor dtype.
+
+## Inspect SSL Backbone
+
+`poultry_geo.ssl_models` provides a lightweight 1x1 `BandAdapter` and a
+custom `RemoteSensingViT` backbone for self-supervised inspection runs:
+
+```python
+from poultry_geo.ssl_models import BandAdapter, RemoteSensingViT
+
+adapter = BandAdapter(in_channels=4, precision="bf16")
+backbone = RemoteSensingViT(
+    image_size=224,
+    patch_size=16,
+    embed_dim=192,
+    depth=12,
+    num_heads=3,
+    precision="bf16",
+)
+```
+
+To run one real batch through the adapter and backbone and print tensor shapes:
+
+macOS/Linux:
+
+```bash
+./scripts/inspect_backbone.sh --data-root ./tmp/test_jpg --batch-size 2 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 12 --num-heads 3 --precision bf16
+```
+
+Windows:
+
+```powershell
+.\scripts\inspect_backbone.cmd --data-root .\tmp\test_jpg --batch-size 2 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 12 --num-heads 3 --precision bf16
+```
+
+Direct CLI on either platform:
+
+```bash
+python -m poultry_geo inspect-backbone tmp/test_jpg --batch-size 2 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 12 --num-heads 3 --precision bf16
+```
+
+This prints:
+
+- input tensor shape `[B, n, H, W]`
+- adapted tensor shape `[B, 3, H, W]`
+- token tensor shape `[B, num_patches, embed_dim]`
+- patch grid, requested precision, resolved precision, and device
 
 On Windows, use:
 

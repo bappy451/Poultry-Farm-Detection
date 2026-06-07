@@ -123,27 +123,10 @@ try {
         $commandArgs = @("-m", "poultry_geo", "--no-log") + $forwardArgs.ToArray()
         if ($loggingEnabled) {
             Write-ProjectLogLine -LogFile $logFile -Line ("Running: " + (Format-CommandString (@($pythonExe) + $commandArgs)))
-            $previousErrorActionPreference = $ErrorActionPreference
-            $previousProgressLog = $env:POULTRY_PROGRESS_LOG
-            $progressEventLog = $logFile + ".progress." + $PID + ".tmp"
-            $ErrorActionPreference = "Continue"
-            $env:POULTRY_PROGRESS_LOG = $progressEventLog
-            try {
-                & $pythonExe @commandArgs 2>&1 | Tee-Object -FilePath $logFile -Append | Out-Host
-                $exitCode = $LASTEXITCODE
-            }
-            finally {
-                $ErrorActionPreference = $previousErrorActionPreference
-                $env:POULTRY_PROGRESS_LOG = $previousProgressLog
-                if (Test-Path -LiteralPath $progressEventLog) {
-                    Get-Content -LiteralPath $progressEventLog | Add-Content -LiteralPath $logFile
-                    Remove-Item -LiteralPath $progressEventLog
-                }
-            }
+            $exitCode = Invoke-ProjectNativeCommand -Executable $pythonExe -Arguments $commandArgs -LogFile $logFile -CaptureToLog
         }
         else {
-            & $pythonExe @commandArgs
-            $exitCode = $LASTEXITCODE
+            $exitCode = Invoke-ProjectNativeCommand -Executable $pythonExe -Arguments $commandArgs
         }
     }
 }

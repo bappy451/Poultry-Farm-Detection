@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import warnings
 from dataclasses import asdict
 from pathlib import Path
 from textwrap import dedent
@@ -61,6 +62,38 @@ class RichArgumentParser(argparse.ArgumentParser):
     def __init__(self, *args, **kwargs):
         kwargs.setdefault("formatter_class", RichHelpFormatter)
         super().__init__(*args, **kwargs)
+
+
+def _resolve_torch_device_alias(device: str | None):
+    import torch
+
+    if device is None or device == "auto":
+        if torch.backends.mps.is_available():
+            return torch.device("mps")
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        return torch.device("cpu")
+
+    normalized = device.strip().lower()
+    if normalized == "gpu":
+        if not torch.cuda.is_available():
+            raise ValueError("Requested device 'gpu', but CUDA is not available.")
+        return torch.device("cuda")
+    if normalized == "cuda":
+        if not torch.cuda.is_available():
+            raise ValueError("Requested device 'cuda', but CUDA is not available.")
+        return torch.device("cuda")
+    if normalized.startswith("cuda:"):
+        if not torch.cuda.is_available():
+            raise ValueError(f"Requested device '{device}', but CUDA is not available.")
+        return torch.device(normalized)
+    if normalized == "mps":
+        if not torch.backends.mps.is_available():
+            raise ValueError("Requested device 'mps', but Apple Metal is not available.")
+        return torch.device("mps")
+    if normalized == "cpu":
+        return torch.device("cpu")
+    return torch.device(device)
 
 
 def _add_command_parser(
@@ -383,6 +416,41 @@ def build_parser() -> argparse.ArgumentParser:
     viz_jpg_parser.add_argument("input_csv")
     viz_jpg_parser.add_argument("jpg_dir")
     viz_jpg_parser.add_argument("output_dir")
+
+    inspect_backbone_parser = _add_command_parser(
+        subparsers,
+        "inspect-backbone",
+        help_text="Inspect adapter and SSL ViT tensor shapes on one NAIP batch.",
+        description=dedent(
+            """
+            Load one batch from the NAIP self-supervised dataloader, adapt n-band imagery
+            down to three channels, and run a ViT backbone forward pass.
+
+            Use this to validate shape flow, precision resolution, device placement, and
+            patch-grid geometry before training or plugging in SSL losses.
+            """
+        ).strip(),
+        epilog=dedent(
+            """
+            Examples:
+              poultry-geo inspect-backbone tmp/test_jpg --batch-size 2 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 12 --num-heads 3
+              poultry-geo inspect-backbone tmp/test_jpg --batch-size 4 --crop-size 224 --channels 4 --precision bf16 --patch-size 16 --embed-dim 384 --depth 8 --num-heads 6 --gradient-checkpointing
+            """
+        ).strip(),
+    )
+    inspect_backbone_parser.add_argument("data_root")
+    inspect_backbone_parser.add_argument("--batch-size", type=int, default=2)
+    inspect_backbone_parser.add_argument("--crop-size", type=int, default=224)
+    inspect_backbone_parser.add_argument("--channels", type=int, default=None)
+    inspect_backbone_parser.add_argument("--precision", default="fp32", choices=["fp32", "fp16", "bf16", "nf4"])
+    inspect_backbone_parser.add_argument("--patch-size", type=int, default=16)
+    inspect_backbone_parser.add_argument("--embed-dim", type=int, required=True)
+    inspect_backbone_parser.add_argument("--depth", type=int, required=True)
+    inspect_backbone_parser.add_argument("--num-heads", type=int, required=True)
+    inspect_backbone_parser.add_argument("--mlp-ratio", type=float, default=4.0)
+    inspect_backbone_parser.add_argument("--num-workers", type=int, default=4)
+    inspect_backbone_parser.add_argument("--device", default=None, help="Execution device, for example cpu or cuda:0.")
+    inspect_backbone_parser.add_argument("--gradient-checkpointing", action="store_true")
 
     train_parser = _add_command_parser(subparsers, "train-yolo", help_text="Train one or more Ultralytics YOLO models.")
     train_parser.add_argument("data_path")
@@ -802,6 +870,68 @@ def main(argv: list[str] | None = None) -> int:
                 args.output_dir,
             )
             print(f"Wrote {len(written)} annotated JPG overlays to {args.output_dir}")
+            return 0
+
+        if args.command == "inspect-backbone":
+            import torch
+            import poultry_geo.naip_data as naip_data
+            import poultry_geo.ssl_models as ssl_models
+
+            device = _resolve_torch_device_alias(args.device)
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=r".*pin_memory.*no accelerator is found.*",
+                    category=UserWarning,
+                )
+                train_loader, _ = naip_data.get_dataloaders(
+                    args.data_root,
+                    batch_size=args.batch_size,
+                    crop_size=args.crop_size,
+                    channels=args.channels,
+                    precision=args.precision,
+                    num_workers=args.num_workers,
+                )
+                batch = next(iter(train_loader))
+            images = batch["image"]
+            images = images.to(device=device, non_blocking=True)
+
+            adapter = ssl_models.BandAdapter(
+                in_channels=int(images.shape[1]),
+                out_channels=3,
+                precision=args.precision,
+            ).to(device)
+            backbone = ssl_models.RemoteSensingViT(
+                image_size=args.crop_size,
+                patch_size=args.patch_size,
+                embed_dim=args.embed_dim,
+                depth=args.depth,
+                num_heads=args.num_heads,
+                mlp_ratio=args.mlp_ratio,
+                precision=args.precision,
+                gradient_checkpointing=args.gradient_checkpointing,
+            ).to(device)
+            adapter.eval()
+            backbone.eval()
+
+            with torch.no_grad():
+                adapted = adapter(images)
+                tokens = backbone.forward_features(adapted)
+
+            patch_grid = (
+                int(adapted.shape[2]) // args.patch_size,
+                int(adapted.shape[3]) // args.patch_size,
+            )
+            print(
+                "inspect-backbone "
+                f"input_shape={tuple(images.shape)} "
+                f"adapted_shape={tuple(adapted.shape)} "
+                f"token_shape={tuple(tokens.shape)} "
+                f"patch_grid={patch_grid} "
+                f"requested_precision={backbone.requested_precision} "
+                f"resolved_precision={backbone.resolved_precision} "
+                f"device={device}"
+            )
             return 0
 
         if args.command == "train-yolo":

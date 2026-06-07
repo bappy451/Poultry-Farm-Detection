@@ -3,8 +3,11 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+import shutil
 
-from poultry_geo.cli import build_parser
+import pytest
+
+from poultry_geo.cli import _resolve_torch_device_alias, build_parser
 
 
 def test_cli_parses_slice_command() -> None:
@@ -86,6 +89,51 @@ def test_cli_parses_transformer_command() -> None:
     assert args.epochs == 2
 
 
+def test_cli_parses_inspect_backbone_command() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "inspect-backbone",
+            "tmp/test_jpg",
+            "--batch-size",
+            "2",
+            "--crop-size",
+            "224",
+            "--channels",
+            "5",
+            "--precision",
+            "nf4",
+            "--patch-size",
+            "16",
+            "--embed-dim",
+            "192",
+            "--depth",
+            "12",
+            "--num-heads",
+            "3",
+            "--gradient-checkpointing",
+        ]
+    )
+
+    assert args.command == "inspect-backbone"
+    assert args.data_root == "tmp/test_jpg"
+    assert args.channels == 5
+    assert args.precision == "nf4"
+    assert args.embed_dim == 192
+    assert args.depth == 12
+    assert args.num_heads == 3
+    assert args.gradient_checkpointing is True
+
+
+def test_resolve_torch_device_alias_supports_gpu_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    torch = pytest.importorskip("torch")
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
+
+    assert _resolve_torch_device_alias("gpu") == torch.device("cuda")
+
+
 def test_main_help_mentions_examples_and_major_workflows() -> None:
     parser = build_parser()
     help_text = parser.format_help()
@@ -152,16 +200,25 @@ def test_windows_wrappers_exist_and_document_logging() -> None:
     poultry_cmd = repo_root / "scripts" / "poultry_geo.cmd"
     slice_ps1 = repo_root / "scripts" / "slice_tiles.ps1"
     slice_cmd = repo_root / "scripts" / "slice_tiles.cmd"
+    inspect_ps1 = repo_root / "scripts" / "inspect_backbone.ps1"
+    inspect_cmd = repo_root / "scripts" / "inspect_backbone.cmd"
+    inspect_sh = repo_root / "scripts" / "inspect_backbone.sh"
     common_ps1 = repo_root / "scripts" / "windows_common.ps1"
 
     assert poultry_ps1.exists()
     assert poultry_cmd.exists()
     assert slice_ps1.exists()
     assert slice_cmd.exists()
+    assert inspect_ps1.exists()
+    assert inspect_cmd.exists()
+    assert inspect_sh.exists()
     assert common_ps1.exists()
 
     poultry_text = poultry_ps1.read_text(encoding="utf-8")
     slice_text = slice_ps1.read_text(encoding="utf-8")
+    inspect_ps1_text = inspect_ps1.read_text(encoding="utf-8")
+    inspect_cmd_text = inspect_cmd.read_text(encoding="utf-8")
+    inspect_sh_text = inspect_sh.read_text(encoding="utf-8")
     poultry_cmd_text = poultry_cmd.read_text(encoding="utf-8")
     slice_cmd_text = slice_cmd.read_text(encoding="utf-8")
     common_text = common_ps1.read_text(encoding="utf-8")
@@ -170,10 +227,139 @@ def test_windows_wrappers_exist_and_document_logging() -> None:
     assert "command.log" in slice_text
     assert "ExecutionPolicy Bypass" in poultry_cmd_text
     assert "ExecutionPolicy Bypass" in slice_cmd_text
+    assert "ExecutionPolicy Bypass" in inspect_cmd_text
+    assert "inspect-backbone" in inspect_ps1_text
+    assert "inspect-backbone" in inspect_sh_text
     assert "Start-ProjectLog" in common_text
     assert "Finish-ProjectLog" in common_text
     assert "Write-ProjectException" in common_text
     assert "duration=" in common_text
+
+
+def test_windows_common_keeps_native_stderr_as_command_output(tmp_path: Path) -> None:
+    if not sys.platform.startswith("win"):
+        pytest.skip("Windows-specific PowerShell wrapper test.")
+
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    if shell is None:
+        pytest.skip("PowerShell is not available.")
+
+    repo_root = Path(__file__).resolve().parents[1]
+    common_ps1 = repo_root / "scripts" / "windows_common.ps1"
+    log_file = tmp_path / "command.log"
+    driver_script = tmp_path / "stderr_smoke.ps1"
+    python_executable = sys.executable.replace("'", "''")
+    common_path = str(common_ps1).replace("'", "''")
+    log_path = str(log_file).replace("'", "''")
+    cwd_path = str(tmp_path).replace("'", "''")
+    driver_script.write_text(
+        "\n".join(
+            [
+                "Set-StrictMode -Version Latest",
+                "$ErrorActionPreference = 'Stop'",
+                f". '{common_path}'",
+                f"$logFile = '{log_path}'",
+                "$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()",
+                "Start-ProjectLog -LogFile $logFile -CommandText 'stderr-smoke' -InvocationCwd '" + cwd_path + "'",
+                "$exitCode = Invoke-ProjectNativeCommand -Executable '" + python_executable + "' -Arguments @('-c', \"import sys; sys.stderr.write('benign stderr\\\\n')\") -LogFile $logFile -CaptureToLog",
+                "Finish-ProjectLog -LogFile $logFile -ExitCode $exitCode -Stopwatch $stopwatch",
+                "exit $exitCode",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [shell, "-ExecutionPolicy", "Bypass", "-File", str(driver_script)],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "benign stderr" in completed.stdout
+    assert "NativeCommandError" not in completed.stdout
+    assert "Wrapper failed with an exception" not in completed.stdout
+    assert log_file.exists()
+
+
+def test_inspect_backbone_command_prints_shape_summary(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    torch = pytest.importorskip("torch")
+
+    import poultry_geo.cli as cli
+    import poultry_geo.naip_data as naip_data
+    import poultry_geo.ssl_models as ssl_models
+
+    batch = {
+        "image": torch.ones((2, 5, 224, 224), dtype=torch.float32),
+        "path": ["a.jpg", "b.jpg"],
+    }
+
+    class _FakeLoader(list):
+        pass
+
+    def fake_get_dataloaders(*args, **kwargs):
+        return _FakeLoader([batch]), _FakeLoader([batch])
+
+    class FakeAdapter(torch.nn.Module):
+        def __init__(self, in_channels: int, out_channels: int = 3, precision: str = "fp32", bypass_rgb: bool = True):
+            super().__init__()
+            self.requested_precision = precision
+            self.resolved_precision = "bf16" if precision == "nf4" else precision
+
+        def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+            return inputs[:, :3].to(dtype=torch.bfloat16)
+
+    class FakeViT(torch.nn.Module):
+        def __init__(self, *args, precision: str = "fp32", **kwargs):
+            super().__init__()
+            self.requested_precision = precision
+            self.resolved_precision = "bf16" if precision == "nf4" else precision
+            self.grid_size = (14, 14)
+
+        def forward_features(self, inputs: torch.Tensor) -> torch.Tensor:
+            return torch.ones((inputs.shape[0], 196, 64), device=inputs.device, dtype=inputs.dtype)
+
+        def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+            return self.forward_features(inputs)
+
+    monkeypatch.setattr(naip_data, "get_dataloaders", fake_get_dataloaders)
+    monkeypatch.setattr(ssl_models, "BandAdapter", FakeAdapter)
+    monkeypatch.setattr(ssl_models, "RemoteSensingViT", FakeViT)
+
+    exit_code = cli.main(
+        [
+            "--no-log",
+            "--no-progress",
+            "inspect-backbone",
+            "tmp/test_jpg",
+            "--batch-size",
+            "2",
+            "--crop-size",
+            "224",
+            "--channels",
+            "5",
+            "--precision",
+            "nf4",
+            "--patch-size",
+            "16",
+            "--embed-dim",
+            "64",
+            "--depth",
+            "2",
+            "--num-heads",
+            "4",
+        ]
+    )
+
+    assert exit_code == 0
+    stdout = capsys.readouterr().out
+    assert "input_shape=(2, 5, 224, 224)" in stdout
+    assert "adapted_shape=(2, 3, 224, 224)" in stdout
+    assert "token_shape=(2, 196, 64)" in stdout
+    assert "patch_grid=(14, 14)" in stdout
+    assert "requested_precision=nf4" in stdout
+    assert "resolved_precision=bf16" in stdout
 
 
 def test_cli_help_appends_to_single_log_file(tmp_path: Path) -> None:

@@ -1,3 +1,8 @@
+# Windows/Linux GPU note:
+# Install the official CUDA-enabled PyTorch wheel before this file if you want GPU support.
+# Verified official PyTorch example for Windows/Linux CUDA 12.6:
+#   python -m pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
+# If you skip that step, pip may satisfy `torch>=...` with a CPU-only build.
 -e .[dev,ml]
 matplotlib>=3.8
 pycocotools>=2.0
