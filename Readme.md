@@ -1,6 +1,6 @@
 # Poultry Farm Geospatial Detection Pipeline
 
-This `Code` directory now packages the notebook workflow as a structured Python project: GeoTIFF slicing, YOLO inference, georeferenced CSV generation, duplicate suppression, rectangle and mask merging, farm clustering, GIS export, shapefile conversion, KML export, SAM or SAM2 helpers, county analytics, transformer-model experiments, model export, and config-driven orchestration.
+This directory now packages the notebook workflow as a structured Python project: GeoTIFF slicing, YOLO inference, georeferenced CSV generation, duplicate suppression, rectangle and mask merging, farm clustering, GIS export, shapefile conversion, KML export, SAM or SAM2 helpers, county analytics, transformer-model experiments, model export, stateful grid-search segmentation training, and config-driven orchestration.
 
 ## Status
 
@@ -25,12 +25,13 @@ So the archive notebooks remain the research record, but the reusable functional
 
 ## Local Assets
 
-These local assets are already present in this workspace:
+The project expects a data directory structure. You should place your assets in a `Data` directory next to this project, or update the paths in your commands accordingly. 
 
-- training dataset: [../Data/poultry_houses_db-2](</Users/abedinm/Desktop/01_MS_Code/Data/poultry_houses_db-2>)
-- dataset YAML: [../Data/poultry_houses_db-2/data.yaml](/Users/abedinm/Desktop/01_MS_Code/Data/poultry_houses_db-2/data.yaml)
-- test GeoTIFF folder: [../Data/Test_ms_ga](</Users/abedinm/Desktop/01_MS_Code/Data/Test_ms_ga>)
-- trained poultry weights: [../01 Data & Code/runs/poultry](</Users/abedinm/Desktop/01_MS_Code/01 Data & Code/runs/poultry>)
+Expected structure examples:
+- training dataset: `../Data/poultry_houses_db-2`
+- dataset YAML: `../Data/poultry_houses_db-2/data.yaml`
+- test GeoTIFF folder: `../Data/Test_ms_ga`
+- trained poultry weights: `../Data/runs/poultry`
 
 The dataset YAML now uses the real local layout:
 
@@ -104,13 +105,16 @@ names:
 
 ## Setup
 
-Use Python 3.12 on this machine. The current environment was created with `/opt/anaconda3/bin/python3.12`.
+Ensure you have Python 3.10+ installed. It is recommended to use a virtual environment.
 
 ```bash
-cd /Users/abedinm/Desktop/01_MS_Code/Code
-/opt/anaconda3/bin/python3.12 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/pip install -r requirements-ml.txt
+# Create and activate a virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows, use: .\.venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+pip install -r requirements-ml.txt
 ```
 
 Core package checks:
@@ -122,9 +126,9 @@ Core package checks:
 
 ## Windows Quick Start
 
-On Windows, the easiest path is to use the new `*.cmd` wrappers from PowerShell or Command Prompt. They automatically invoke the PowerShell scripts with execution-policy bypass and append every run to [command.log](/Users/abedinm/Desktop/01_MS_Code/Code/command.log).
+On Windows, the easiest path is to use the new `*.cmd` wrappers from PowerShell or Command Prompt. They automatically invoke the PowerShell scripts with execution-policy bypass and append every run to `command.log`.
 
-From the `Code` directory on Windows:
+From the project root directory on Windows:
 
 ```powershell
 py -3.12 -m venv .venv
@@ -160,7 +164,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\slice_tiles.ps1 --input-dir .
 The Windows wrappers support the same append-only log controls:
 
 - `--log-file PATH`
-  Write to a different log file instead of `Code\command.log`.
+  Write to a different log file instead of `command.log`.
 - `--no-log`
   Disable wrapper logging for one run.
 - `--python PATH`
@@ -459,6 +463,7 @@ Main commands:
 .venv/bin/python -m poultry_geo train-yolo data.yaml runs/poultry --models rtdetr-l.pt --family rtdetr
 .venv/bin/python -m poultry_geo train-detr train/images train/_annotations.coco.json runs/detr
 .venv/bin/python -m poultry_geo train-mask2former train/images train/_annotations.coco.json runs/mask2former
+.venv/bin/python -m poultry_geo updated-train segmentation-demo --config config.yaml --epochs 2 --root-dir trained_models
 .venv/bin/python -m poultry_geo export-model weights/best.pt --format torchscript
 
 # County analytics
@@ -471,28 +476,28 @@ Main commands:
 
 ## Local Usage Examples
 
-From `Code/`, the real dataset and test rasters can be used directly:
+From the project root, the dataset and test rasters can be used directly (assuming they are placed in `../Data`):
 
 ```bash
 # Verify tests
 .venv/bin/python -m pytest -q
 
-# Train from the provided poultry dataset
+# Train from the poultry dataset
 .venv/bin/python -m poultry_geo train-yolo \
   ../Data/poultry_houses_db-2/data.yaml \
   runs/poultry \
-  --models ../01\ Data\ \&\ Code/runs/poultry/yolov8n-seg-bs16-ep200/weights/best.pt \
+  --models ../Data/runs/poultry/yolov8n-seg-bs16-ep200/weights/best.pt \
   --epochs 1 --batch-size 1 --image-size 256 --device mps
 
-# Create boundaries for the provided test GeoTIFFs
+# Create boundaries for the test GeoTIFFs
 .venv/bin/python -m poultry_geo create-boundaries \
   ../Data/Test_ms_ga \
   boundary_shapes
 
-# Run inference on the provided GeoTIFF folder with an existing poultry checkpoint
+# Run inference on the GeoTIFF folder with an existing poultry checkpoint
 .venv/bin/python -m poultry_geo infer-yolo \
   ../Data/Test_ms_ga \
-  ../01\ Data\ \&\ Code/runs/poultry/yolov8s-seg-bs16-ep200/weights/best.pt \
+  ../Data/runs/poultry/yolov8s-seg-bs16-ep200/weights/best.pt \
   detections.csv \
   --window-size 3000 --stride 3000 --confidence-threshold 0.01 --device mps
 ```
@@ -514,7 +519,7 @@ Current verified state on this machine:
 - `export-model` succeeded to TorchScript
 - `train-yolo` completed a 1-epoch dry run on a tiny subset built from the real poultry dataset
 
-Smoke outputs from the latest run are stored under [tmp/smoke_real](</Users/abedinm/Desktop/01_MS_Code/Code/tmp/smoke_real>).
+Smoke outputs from the latest run are stored under `tmp/smoke_real`.
 
 ## Pipeline Outputs
 
@@ -539,7 +544,7 @@ Smoke outputs from the latest run are stored under [tmp/smoke_real](</Users/abed
 
 The notebook folders remain useful as the research record:
 
-- [notebook](</Users/abedinm/Desktop/01_MS_Code/Code/notebook>)
-- [notebook_new](</Users/abedinm/Desktop/01_MS_Code/Code/notebook_new>)
+- `notebook/`
+- `notebook_new/`
 
 They still include exploratory work, checkpoints, manuscript analysis, and one-off experiments. The structured package in `src/poultry_geo/` is the maintained terminal-facing project surface that recreates the reusable notebook functionality.

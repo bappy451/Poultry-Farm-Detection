@@ -26,6 +26,8 @@ tmp*/
 **/tmp*/
 
 runs/
+trained_models/
+**/trained_models/
 output_slices/
 output_slices_geo/
 annotated_output/

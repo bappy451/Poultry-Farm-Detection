@@ -54,6 +54,7 @@ from poultry_geo.progress import command_progress_context
 from poultry_geo.sam import batch_sam2_visualize, run_sam_geo_csv_batch, run_sam_on_bbox_csv
 from poultry_geo.training import train_yolo_models
 from poultry_geo.transformer_models import predict_hf_detr, train_hf_detr, train_mask2former
+from poultry_geo.updated_train import run_stateful_grid_search
 class RichHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
     """Show defaults while preserving hand-written help layout."""
 
@@ -684,6 +685,16 @@ def build_parser() -> argparse.ArgumentParser:
         help_text="Run the end-to-end geospatial pipeline from a JSON config file.",
     )
     pipeline_parser.add_argument("config_path")
+
+    updated_train_parser = _add_command_parser(
+        subparsers,
+        "updated-train",
+        help_text="Run stateful resume-aware segmentation grid search training.",
+    )
+    updated_train_parser.add_argument("training_name", help="Run identifier or 'training_name=<name>'.")
+    updated_train_parser.add_argument("--config", default="config.yaml", help="Path to the grid-search YAML config.")
+    updated_train_parser.add_argument("--epochs", type=int, default=None, help="Override runtime.epochs from the config.")
+    updated_train_parser.add_argument("--root-dir", default="trained_models", help="Root directory for saved runs.")
 
     return parser
 
@@ -1324,6 +1335,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "run-pipeline":
             outputs = run_pipeline(load_pipeline_config(args.config_path))
             print(f"Pipeline completed. Summary written to {outputs['summary_json']}")
+            return 0
+
+        if args.command == "updated-train":
+            results = run_stateful_grid_search(
+                config_path=args.config,
+                training_name=args.training_name,
+                epochs=args.epochs,
+                root_dir=args.root_dir,
+            )
+            print(results.to_string(index=False))
             return 0
 
         parser.error(f"Unknown command: {args.command}")

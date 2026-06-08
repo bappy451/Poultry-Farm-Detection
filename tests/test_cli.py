@@ -254,6 +254,7 @@ def test_slice_help_mentions_edge_snapping_and_workers() -> None:
     assert "--log-file" in help_text
 
 
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Bash scripts don't handle Windows paths reliably in tests.")
 def test_script_wrappers_show_help_examples() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     python_script = repo_root / "scripts" / "poultry_geo.py"
@@ -757,6 +758,7 @@ def test_cli_no_log_skips_log_creation(tmp_path: Path) -> None:
     assert not log_file.exists()
 
 
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Bash scripts don't handle Windows paths reliably in tests.")
 def test_slice_wrapper_logs_without_outer_wrapper(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     shell_script = repo_root / "scripts" / "slice_tiles.sh"
@@ -779,6 +781,7 @@ def test_slice_wrapper_logs_without_outer_wrapper(tmp_path: Path) -> None:
     assert "Finished (exit=0" in log_text
 
 
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Bash scripts don't handle Windows paths reliably in tests.")
 def test_generic_logged_wrapper_captures_output(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     wrapper = repo_root / "scripts" / "run_logged.sh"
