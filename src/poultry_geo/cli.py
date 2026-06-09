@@ -525,14 +525,16 @@ def build_parser() -> argparse.ArgumentParser:
     train_mim_parser.add_argument("--crop-size", type=int, default=224)
     train_mim_parser.add_argument("--channels", type=int, default=None)
     train_mim_parser.add_argument("--precision", default="fp32", choices=["fp32", "fp16", "bf16", "nf4"])
+    train_mim_parser.add_argument("--model-name", choices=["S", "B", "L", "H"], help="Standard ViT variant preset.")
     train_mim_parser.add_argument("--patch-size", type=int, default=16)
-    train_mim_parser.add_argument("--embed-dim", type=int, required=True)
-    train_mim_parser.add_argument("--depth", type=int, required=True)
-    train_mim_parser.add_argument("--num-heads", type=int, required=True)
+    train_mim_parser.add_argument("--embed-dim", type=int)
+    train_mim_parser.add_argument("--depth", type=int)
+    train_mim_parser.add_argument("--num-heads", type=int)
     train_mim_parser.add_argument("--mlp-ratio", type=float, default=4.0)
     train_mim_parser.add_argument("--mask-ratio", type=float, default=0.75)
     train_mim_parser.add_argument("--num-workers", type=int, default=4)
     train_mim_parser.add_argument("--epochs", type=int, default=1)
+    train_mim_parser.add_argument("--optimizer", default="adamw", choices=["adamw", "adan", "sophia", "lion"])
     train_mim_parser.add_argument("--learning-rate", type=float, default=1e-4)
     train_mim_parser.add_argument("--weight-decay", type=float, default=0.05)
     train_mim_parser.add_argument("--device", default=None, help="Execution device, for example cpu, gpu, cuda:0, or mps.")
@@ -746,6 +748,23 @@ def build_parser() -> argparse.ArgumentParser:
     spark_grid_parser.add_argument("training_name", help="Run identifier.")
     spark_grid_parser.add_argument("--config", default="configs/spark_grid_search.yaml", help="Path to the SparK grid-search YAML config.")
     spark_grid_parser.add_argument("--epochs", type=int, default=None, help="Override runtime.epochs from the config.")
+
+    # Visualization commands
+    plot_run_parser = _add_command_parser(
+        subparsers,
+        "plot-run",
+        help_text="Generate professional-grade training plots for a single run.",
+    )
+    plot_run_parser.add_argument("run_dir", help="Directory containing metrics.json/csv")
+    plot_run_parser.add_argument("--output-dir", default="plots", help="Directory to save plots")
+
+    grid_plot_parser = _add_command_parser(
+        subparsers,
+        "ssl-grid-plot",
+        help_text="Generate a professional-grade summary plot for an SSL grid search campaign.",
+    )
+    grid_plot_parser.add_argument("results_csv", help="Path to grid_search_results.csv")
+    grid_plot_parser.add_argument("--output-dir", default="plots", help="Directory to save summary plots")
     spark_grid_parser.add_argument("--root-dir", default="trained_models", help="Root directory for saved runs.")
 
     plot_parser = _add_command_parser(
@@ -1187,13 +1206,28 @@ def main(argv: list[str] | None = None) -> int:
                 else None
             )
             model_in_channels = args.channels or getattr(getattr(train_loader, "dataset", None), "_expected_channels", 3)
+            from poultry_geo.ssl_models import VIT_CONFIGS
+            
+            embed_dim = args.embed_dim
+            depth = args.depth
+            num_heads = args.num_heads
+            
+            if args.model_name:
+                config = VIT_CONFIGS[args.model_name]
+                embed_dim = config["embed_dim"]
+                depth = config["depth"]
+                num_heads = config["num_heads"]
+            
+            if embed_dim is None or depth is None or num_heads is None:
+                parser.error("Either --model-name or all of (--embed-dim, --depth, --num-heads) must be provided.")
+
             model = ssl_models.RemoteSensingMIMModel(
                 in_channels=model_in_channels,
                 image_size=args.crop_size,
                 patch_size=args.patch_size,
-                embed_dim=args.embed_dim,
-                depth=args.depth,
-                num_heads=args.num_heads,
+                embed_dim=embed_dim,
+                depth=depth,
+                num_heads=num_heads,
                 precision=args.precision,
                 mask_ratio=args.mask_ratio,
                 gradient_checkpointing=args.gradient_checkpointing,
@@ -1205,7 +1239,9 @@ def main(argv: list[str] | None = None) -> int:
                 mlp_ratio=args.mlp_ratio,
                 quantization_config=quantization_config,
             )
-            optimizer = __import__("torch").optim.AdamW(
+            from poultry_geo.optimizers import build_optimizer
+            optimizer = build_optimizer(
+                args.optimizer,
                 [parameter for parameter in model.parameters() if parameter.requires_grad],
                 lr=args.learning_rate,
                 weight_decay=args.weight_decay,
@@ -1260,7 +1296,7 @@ def main(argv: list[str] | None = None) -> int:
                 adapter=adapter, 
                 patch_size=args.patch_size, 
                 mask_ratio=args.mask_ratio
-            )
+            ).to(device)
             model = spark_models.SparKNetwork(
                 backbone_type=args.backbone_type, 
                 in_channels=3
@@ -1531,10 +1567,17 @@ def main(argv: list[str] | None = None) -> int:
             print(results.to_string(index=False))
             return 0
 
-        if args.command == "plot-training-logs":
+        if args.command == "plot-run":
             from poultry_geo.plot_metrics import plot_training_logs
             out_file = plot_training_logs(args.run_dir, args.output_dir)
             print(f"Generated plot written to {out_file}")
+            return 0
+
+        if args.command == "ssl-grid-plot":
+            from poultry_geo.plot_metrics import plot_grid_search_results
+            out_file = plot_grid_search_results(args.results_csv, args.output_dir)
+            if out_file:
+                print(f"Grid search summary plot written to {out_file}")
             return 0
 
         parser.error(f"Unknown command: {args.command}")

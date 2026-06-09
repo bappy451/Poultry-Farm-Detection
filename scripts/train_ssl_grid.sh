@@ -114,9 +114,14 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     *)
-      FORWARD_ARGS+=("$1")
-      shift 1
+      if [[ -z "${TRAINING_NAME}" ]]; then
+        TRAINING_NAME="$1"
+      else
+        FORWARD_ARGS+=("$1")
+      fi
+      shift
       ;;
+
   esac
 done
 

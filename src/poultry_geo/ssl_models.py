@@ -18,6 +18,13 @@ PRECISION_DTYPES = {
     "nf4": torch.bfloat16,
 }
 
+VIT_CONFIGS = {
+    "S": {"embed_dim": 384, "depth": 12, "num_heads": 6},
+    "B": {"embed_dim": 768, "depth": 12, "num_heads": 12},
+    "L": {"embed_dim": 1024, "depth": 24, "num_heads": 16},
+    "H": {"embed_dim": 1280, "depth": 32, "num_heads": 16},
+}
+
 
 def _bitsandbytes_supports_nf4() -> bool:
     try:
@@ -337,6 +344,32 @@ class _Mlp(nn.Module):
         return self.drop(outputs)
 
 
+def drop_path(x: torch.Tensor, drop_prob: float = 0.0, training: bool = False) -> torch.Tensor:
+    """
+    Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
+    """
+    if drop_prob == 0.0 or not training:
+        return x
+    keep_prob = 1 - drop_prob
+    shape = (x.shape[0],) + (1,) * (x.ndim - 1)
+    random_tensor = x.new_empty(shape).bernoulli_(keep_prob)
+    if keep_prob > 0.0:
+        random_tensor.div_(keep_prob)
+    return x * random_tensor
+
+
+class _DropPath(nn.Module):
+    """
+    Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
+    """
+    def __init__(self, drop_prob: float = 0.0) -> None:
+        super().__init__()
+        self.drop_prob = drop_prob
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return drop_path(x, self.drop_prob, self.training)
+
+
 class _TransformerBlock(nn.Module):
     def __init__(
         self,
@@ -346,6 +379,7 @@ class _TransformerBlock(nn.Module):
         mlp_ratio: float = 4.0,
         drop_rate: float = 0.0,
         attn_drop_rate: float = 0.0,
+        drop_path_rate: float = 0.0,
         precision: str = "fp32",
         quantization_config: Any | None = None,
     ) -> None:
@@ -360,6 +394,7 @@ class _TransformerBlock(nn.Module):
             precision=precision,
             quantization_config=quantization_config,
         )
+        self.drop_path = _DropPath(drop_path_rate) if drop_path_rate > 0.0 else nn.Identity()
         self.norm2 = _PrecisionLayerNorm(embed_dim, precision=precision)
         self.mlp = _Mlp(
             embed_dim,
@@ -370,8 +405,8 @@ class _TransformerBlock(nn.Module):
         )
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        outputs = inputs + self.attn(self.norm1(inputs))
-        outputs = outputs + self.mlp(self.norm2(outputs))
+        outputs = inputs + self.drop_path(self.attn(self.norm1(inputs)))
+        outputs = outputs + self.drop_path(self.mlp(self.norm2(outputs)))
         return outputs
 
 
@@ -432,11 +467,6 @@ class BandAdapter(nn.Module):
     """
     Projects heterogeneous sensor bands (e.g., NAIP 4-band, Sentinel-2 12-band) 
     into a three-channel RGB-like space.
-    
-    Remote sensing imagery often contains spectral bands beyond Red, Green, and 
-    Blue (like Near-Infrared). This module uses a learnable 1x1 convolution to 
-    'project' these extra bands into a 3-channel representation that standard 
-    computer vision models can process.
     """
 
     def __init__(
@@ -447,37 +477,18 @@ class BandAdapter(nn.Module):
         precision: str = "fp32",
         bypass_rgb: bool = True,
     ) -> None:
-        """
-        Args:
-            in_channels: Number of spectral bands in the source imagery.
-            out_channels: Target number of channels (default: 3).
-            precision: Computation precision (fp32, fp16, bf16).
-            bypass_rgb: If True and in/out channels are both 3, skips projection.
-        """
         super().__init__()
-        if in_channels <= 0:
-            raise ValueError("in_channels must be a positive integer.")
-        if out_channels <= 0:
-            raise ValueError("out_channels must be a positive integer.")
-
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.bypass_rgb = bypass_rgb
         self.requested_precision = _validate_precision(precision)
         self.resolved_precision = "bf16" if self.requested_precision == "nf4" else self.requested_precision
 
-        # Learnable 1x1 convolution for spectral dimensionality reduction
         self.proj: nn.Conv2d | None = None
         if not (self.bypass_rgb and in_channels == out_channels == 3):
             self.proj = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=True)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            inputs: Multi-band image tensor [B, C, H, W]
-        Returns:
-            Projected 3-channel tensor [B, out_channels, H, W]
-        """
         if inputs.ndim != 4:
             raise ValueError("BandAdapter expects inputs with shape [B, C, H, W].")
         if inputs.shape[1] != self.in_channels:
@@ -489,8 +500,6 @@ class BandAdapter(nn.Module):
             return inputs.to(dtype=_output_dtype(self.resolved_precision))
 
         compute_dtype = _runtime_compute_dtype(inputs.device, self.resolved_precision)
-        
-        # Apply the learned 1x1 linear projection across spectral bands
         outputs = F.conv2d(
             inputs.to(dtype=compute_dtype),
             self.proj.weight.to(device=inputs.device, dtype=compute_dtype),
@@ -500,14 +509,6 @@ class BandAdapter(nn.Module):
 
 
 class RemoteSensingViT(nn.Module):
-    """
-    Compact Vision Transformer (ViT) backbone optimized for remote-sensing SSL.
-    
-    This backbone follows the standard ViT architecture (Patch Embedding, 
-    Transformer Blocks, and optional [CLS] token) but is designed to be 
-    efficient for high-resolution satellite/aerial imagery.
-    """
-
     def __init__(
         self,
         image_size: int | tuple[int, int],
@@ -522,35 +523,13 @@ class RemoteSensingViT(nn.Module):
         gradient_checkpointing: bool = False,
         drop_rate: float = 0.0,
         attn_drop_rate: float = 0.0,
+        drop_path_rate: float = 0.0,
     ) -> None:
-        """
-        Args:
-            image_size: Resolution of input images.
-            patch_size: Resolution of each patch.
-            embed_dim: Latent vector dimension.
-            depth: Number of transformer layers.
-            num_heads: Number of attention heads.
-            mlp_ratio: Expansion factor in MLP layers.
-            precision: Computation precision (fp32, fp16, bf16, nf4).
-            quantization_config: Configuration for 4-bit loading (QLoRA style).
-            gradient_checkpointing: If True, saves memory during backprop.
-        """
         super().__init__()
-        if embed_dim <= 0:
-            raise ValueError("embed_dim must be a positive integer.")
-        if depth <= 0:
-            raise ValueError("depth must be a positive integer.")
-        if num_heads <= 0:
-            raise ValueError("num_heads must be a positive integer.")
-        if mlp_ratio <= 0:
-            raise ValueError("mlp_ratio must be positive.")
-
         requested_precision = _validate_precision(precision)
         image_hw = _pair(image_size)
         patch_hw = _pair(patch_size)
-        if image_hw[0] % patch_hw[0] != 0 or image_hw[1] % patch_hw[1] != 0:
-            raise ValueError("image_size must be divisible by patch_size.")
-
+        
         self.requested_precision = requested_precision
         self.resolved_precision = _resolve_precision(requested_precision, allow_nf4=True)
         self.gradient_checkpointing = gradient_checkpointing
@@ -569,6 +548,10 @@ class RemoteSensingViT(nn.Module):
         self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches, embed_dim))
         _trunc_normal_(self.pos_embed)
         self.pos_drop = nn.Dropout(drop_rate)
+        
+        # Stochastic depth decay rule
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
+        
         self.blocks = nn.ModuleList(
             _TransformerBlock(
                 embed_dim,
@@ -576,24 +559,17 @@ class RemoteSensingViT(nn.Module):
                 mlp_ratio=mlp_ratio,
                 drop_rate=drop_rate,
                 attn_drop_rate=attn_drop_rate,
+                drop_path_rate=dpr[i],
                 precision=block_precision,
                 quantization_config=quantization_config,
             )
-            for _ in range(depth)
+            for i in range(depth)
         )
         self.norm = _PrecisionLayerNorm(embed_dim, precision=block_precision)
 
     def embed_patches(self, inputs: torch.Tensor) -> tuple[torch.Tensor, tuple[int, int]]:
-        if inputs.ndim != 4:
-            raise ValueError("RemoteSensingViT expects inputs with shape [B, C, H, W].")
-        if inputs.shape[1] != 3:
-            raise ValueError("RemoteSensingViT expects three-channel inputs. Use BandAdapter first.")
-
         height, width = int(inputs.shape[2]), int(inputs.shape[3])
         patch_height, patch_width = self.geometry.patch_size
-        if height % patch_height != 0 or width % patch_width != 0:
-            raise ValueError("Input height and width must be divisible by patch_size.")
-
         outputs = self.patch_embed(inputs)
         current_grid = (outputs.shape[2], outputs.shape[3])
         return outputs.flatten(2).transpose(1, 2), current_grid
@@ -617,7 +593,6 @@ class RemoteSensingViT(nn.Module):
                 outputs = checkpoint_utils.checkpoint(block, outputs)
             else:
                 outputs = block(outputs)
-
         outputs = self.norm(outputs)
         return outputs.to(dtype=_output_dtype(self.resolved_precision))
 
@@ -638,15 +613,9 @@ class RemoteSensingViT(nn.Module):
     ) -> torch.Tensor:
         if target_grid == self.grid_size:
             return self.pos_embed.to(device=device, dtype=dtype)
-
         embeddings = self.pos_embed.reshape(1, self.grid_size[0], self.grid_size[1], self.embed_dim)
         embeddings = embeddings.permute(0, 3, 1, 2)
-        embeddings = F.interpolate(
-            embeddings,
-            size=target_grid,
-            mode="bicubic",
-            align_corners=False,
-        )
+        embeddings = F.interpolate(embeddings, size=target_grid, mode="bicubic", align_corners=False)
         embeddings = embeddings.permute(0, 2, 3, 1).reshape(1, target_grid[0] * target_grid[1], self.embed_dim)
         return embeddings.to(device=device, dtype=dtype)
 
@@ -662,31 +631,16 @@ def inject_lora_into_vit(
 ) -> RemoteSensingViT:
     if freeze_backbone:
         model.requires_grad_(False)
-
     targets = set(target_modules)
     for block in model.blocks:
         if "qkv" in targets and not isinstance(block.attn.qkv, LoRALinear):
-            block.attn.qkv = LoRALinear(
-                block.attn.qkv,
-                rank=rank,
-                alpha=alpha,
-                dropout=dropout,
-                precision=model.resolved_precision,
-            )
+            block.attn.qkv = LoRALinear(block.attn.qkv, rank=rank, alpha=alpha, dropout=dropout, precision=model.resolved_precision)
         if "proj" in targets and not isinstance(block.attn.proj, LoRALinear):
-            block.attn.proj = LoRALinear(
-                block.attn.proj,
-                rank=rank,
-                alpha=alpha,
-                dropout=dropout,
-                precision=model.resolved_precision,
-            )
-
+            block.attn.proj = LoRALinear(block.attn.proj, rank=rank, alpha=alpha, dropout=dropout, precision=model.resolved_precision)
     if freeze_backbone:
         for name, parameter in model.named_parameters():
             if "lora_" in name:
                 parameter.requires_grad_(True)
-
     model.use_lora = True
     return model
 
@@ -702,13 +656,6 @@ class DecoderHead(nn.Module):
         precision: str = "fp32",
     ) -> None:
         super().__init__()
-        if embed_dim <= 0:
-            raise ValueError("embed_dim must be a positive integer.")
-        if hidden_channels <= 0:
-            raise ValueError("hidden_channels must be a positive integer.")
-        if out_channels <= 0:
-            raise ValueError("out_channels must be a positive integer.")
-
         self.embed_dim = embed_dim
         self.output_size = _pair(output_size)
         self.hidden_channels = hidden_channels
@@ -717,60 +664,16 @@ class DecoderHead(nn.Module):
         self.resolved_precision = _resolve_precision(self.requested_precision, allow_nf4=False)
         mid_channels = max(1, hidden_channels // 2)
 
-        self.proj = _PrecisionConv2d(
-            embed_dim,
-            hidden_channels,
-            kernel_size=1,
-            precision=self.resolved_precision,
-        )
-        self.refine1 = _PrecisionConv2d(
-            hidden_channels,
-            hidden_channels,
-            kernel_size=3,
-            padding=1,
-            precision=self.resolved_precision,
-        )
-        self.refine2 = _PrecisionConv2d(
-            hidden_channels,
-            mid_channels,
-            kernel_size=3,
-            padding=1,
-            precision=self.resolved_precision,
-        )
-        self.head = _PrecisionConv2d(
-            mid_channels,
-            out_channels,
-            kernel_size=1,
-            precision=self.resolved_precision,
-        )
+        self.proj = _PrecisionConv2d(embed_dim, hidden_channels, kernel_size=1, precision=self.resolved_precision)
+        self.refine1 = _PrecisionConv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1, precision=self.resolved_precision)
+        self.refine2 = _PrecisionConv2d(hidden_channels, mid_channels, kernel_size=3, padding=1, precision=self.resolved_precision)
+        self.head = _PrecisionConv2d(mid_channels, out_channels, kernel_size=1, precision=self.resolved_precision)
 
-    def forward(
-        self,
-        patch_embeddings: torch.Tensor,
-        *,
-        grid_size: tuple[int, int] | None = None,
-    ) -> torch.Tensor:
-        if patch_embeddings.ndim != 3:
-            raise ValueError("DecoderHead expects inputs with shape [B, N, D].")
-        if patch_embeddings.shape[-1] != self.embed_dim:
-            raise ValueError(
-                f"DecoderHead expected embedding dimension {self.embed_dim}, received {patch_embeddings.shape[-1]}."
-            )
-
+    def forward(self, patch_embeddings: torch.Tensor, *, grid_size: tuple[int, int] | None = None) -> torch.Tensor:
         if grid_size is None:
             side = round(patch_embeddings.shape[1] ** 0.5)
-            if side * side != patch_embeddings.shape[1]:
-                raise ValueError("grid_size must be provided when token count is not a perfect square.")
             grid_size = (side, side)
-        if grid_size[0] * grid_size[1] != patch_embeddings.shape[1]:
-            raise ValueError("grid_size must match the number of patch tokens.")
-
-        outputs = patch_embeddings.transpose(1, 2).reshape(
-            patch_embeddings.shape[0],
-            self.embed_dim,
-            grid_size[0],
-            grid_size[1],
-        )
+        outputs = patch_embeddings.transpose(1, 2).reshape(patch_embeddings.shape[0], self.embed_dim, grid_size[0], grid_size[1])
         outputs = self.proj(outputs)
         outputs = F.gelu(outputs)
         outputs = F.interpolate(outputs, size=self.output_size, mode="bilinear", align_corners=False)
@@ -783,31 +686,11 @@ class DecoderHead(nn.Module):
 
 
 class SegmentationHead(DecoderHead):
-    def __init__(
-        self,
-        *,
-        embed_dim: int,
-        output_size: int | tuple[int, int],
-        hidden_channels: int = 128,
-        precision: str = "fp32",
-    ) -> None:
-        super().__init__(
-            embed_dim=embed_dim,
-            output_size=output_size,
-            hidden_channels=hidden_channels,
-            out_channels=1,
-            precision=precision,
-        )
+    def __init__(self, *, embed_dim: int, output_size: int | tuple[int, int], hidden_channels: int = 128, precision: str = "fp32") -> None:
+        super().__init__(embed_dim=embed_dim, output_size=output_size, hidden_channels=hidden_channels, out_channels=1, precision=precision)
 
 
 class RemoteSensingSegmentationModel(nn.Module):
-    """
-    A ViT-based semantic segmentation model for remote sensing (e.g., roof masking).
-    
-    This model combines the pre-trained ViT backbone with a Convolutional 
-    decoder head. It supports Parameter-Efficient Fine-Tuning (PEFT) via LoRA 
-    and can process multi-band imagery through its BandAdapter.
-    """
     def __init__(
         self,
         *,
@@ -828,30 +711,15 @@ class RemoteSensingSegmentationModel(nn.Module):
         mlp_ratio: float = 4.0,
         drop_rate: float = 0.0,
         attn_drop_rate: float = 0.0,
+        drop_path_rate: float = 0.0,
     ) -> None:
-        """
-        Args:
-            in_channels: Number of bands in the input.
-            image_size: Resolution of input images.
-            patch_size: Resolution of patches.
-            embed_dim: Latent vector dimension.
-            depth: Number of transformer layers.
-            num_heads: Number of attention heads.
-            precision: Computation precision.
-            use_lora: If True, injects LoRA layers into the backbone.
-            freeze_backbone: If True, freezes the transformer weights.
-        """
         super().__init__()
         self.requested_precision = _validate_precision(precision)
         self.use_lora = use_lora
         self.freeze_backbone = freeze_backbone
         self.image_size = _pair(image_size)
         self.patch_size = _pair(patch_size)
-
-        # Spectral projection
         self.adapter = BandAdapter(in_channels=in_channels, out_channels=3, precision=precision)
-        
-        # Core transformer backbone
         self.backbone = RemoteSensingViT(
             image_size=self.image_size,
             patch_size=self.patch_size,
@@ -863,56 +731,23 @@ class RemoteSensingSegmentationModel(nn.Module):
             gradient_checkpointing=gradient_checkpointing,
             drop_rate=drop_rate,
             attn_drop_rate=attn_drop_rate,
+            drop_path_rate=drop_path_rate,
         )
         if freeze_backbone and not use_lora:
             self.backbone.requires_grad_(False)
         if use_lora:
-            inject_lora_into_vit(
-                self.backbone,
-                rank=lora_rank,
-                alpha=lora_alpha,
-                dropout=lora_dropout,
-                freeze_backbone=freeze_backbone,
-            )
-        self.head = SegmentationHead(
-            embed_dim=embed_dim,
-            output_size=self.image_size,
-            hidden_channels=decoder_hidden_channels,
-            precision=precision,
-        )
+            inject_lora_into_vit(self.backbone, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout, freeze_backbone=freeze_backbone)
+        self.head = SegmentationHead(embed_dim=embed_dim, output_size=self.image_size, hidden_channels=decoder_hidden_channels, precision=precision)
         self.resolved_precision = self.backbone.resolved_precision
 
-    def forward_features(self, inputs: torch.Tensor) -> torch.Tensor:
-        adapted = self.adapter(inputs)
-        return self.backbone.forward_features(adapted)
-
-    def forward_with_intermediates(self, inputs: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         adapted = self.adapter(inputs)
         tokens = self.backbone.forward_features(adapted)
-        grid_size = (
-            int(adapted.shape[2]) // self.patch_size[0],
-            int(adapted.shape[3]) // self.patch_size[1],
-        )
-        mask = self.head(tokens, grid_size=grid_size)
-        return {
-            "adapted": adapted,
-            "tokens": tokens,
-            "mask": mask,
-        }
-
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        return self.forward_with_intermediates(inputs)["mask"]
+        grid_size = (int(adapted.shape[2]) // self.patch_size[0], int(adapted.shape[3]) // self.patch_size[1])
+        return self.head(tokens, grid_size=grid_size)
 
 
 class RemoteSensingMIMModel(nn.Module):
-    """
-    Implements a Masked Image Modeling (MIM) objective for self-supervised pretraining.
-    
-    This model hides random patches of the input image and trains the ViT backbone 
-    and a lightweight decoder to reconstruct the missing pixels. This forces the 
-    model to learn high-level semantic and spatial features without requiring 
-    labeled data.
-    """
     def __init__(
         self,
         *,
@@ -933,38 +768,20 @@ class RemoteSensingMIMModel(nn.Module):
         mlp_ratio: float = 4.0,
         drop_rate: float = 0.0,
         attn_drop_rate: float = 0.0,
+        drop_path_rate: float = 0.0,
         quantization_config: Any | None = None,
     ) -> None:
-        """
-        Args:
-            in_channels: Number of bands in the input.
-            image_size: Resolution of input images.
-            patch_size: Resolution of masking patches.
-            embed_dim: Latent vector dimension.
-            depth: Number of transformer layers.
-            num_heads: Number of attention heads.
-            precision: Computation precision (fp32, fp16, bf16, nf4).
-            mask_ratio: Fraction of patches to hide (default: 0.75).
-        """
         super().__init__()
-        if not 0.0 < mask_ratio < 1.0:
-            raise ValueError("mask_ratio must be between 0 and 1.")
-
         self.requested_precision = _validate_precision(precision)
         self.quantization_config = quantization_config
         if self.requested_precision == "nf4" and self.quantization_config is None:
             self.quantization_config = build_nf4_quantization_config()
-
         self.image_size = _pair(image_size)
         self.patch_size = _pair(patch_size)
         self.mask_ratio = float(mask_ratio)
         self.use_lora = bool(use_lora or self.requested_precision == "nf4")
         self.freeze_backbone = bool(freeze_backbone or self.requested_precision == "nf4")
-
-        # Spectral projection layer
         self.adapter = BandAdapter(in_channels=in_channels, out_channels=3, precision=precision)
-        
-        # Core transformer backbone
         self.backbone = RemoteSensingViT(
             image_size=self.image_size,
             patch_size=self.patch_size,
@@ -977,89 +794,33 @@ class RemoteSensingMIMModel(nn.Module):
             gradient_checkpointing=gradient_checkpointing,
             drop_rate=drop_rate,
             attn_drop_rate=attn_drop_rate,
+            drop_path_rate=drop_path_rate,
         )
         if self.freeze_backbone and not self.use_lora:
             self.backbone.requires_grad_(False)
         if self.use_lora:
-            inject_lora_into_vit(
-                self.backbone,
-                rank=lora_rank,
-                alpha=lora_alpha,
-                dropout=lora_dropout,
-                freeze_backbone=self.freeze_backbone,
-            )
-
+            inject_lora_into_vit(self.backbone, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout, freeze_backbone=self.freeze_backbone)
         self.resolved_precision = self.backbone.resolved_precision
         self.patch_dim = 3 * self.patch_size[0] * self.patch_size[1]
         self.reconstruction_precision = "bf16" if self.requested_precision == "nf4" else self.resolved_precision
         self.mask_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         _trunc_normal_(self.mask_token)
-        self.reconstruction_head = _PrecisionLinear(
-            embed_dim,
-            self.patch_dim,
-            precision=self.reconstruction_precision,
-        )
-
-    @staticmethod
-    def compute_masked_loss(
-        reconstructed_patches: torch.Tensor,
-        target_patches: torch.Tensor,
-        mask: torch.Tensor,
-    ) -> torch.Tensor:
-        if reconstructed_patches.shape != target_patches.shape:
-            raise ValueError("reconstructed_patches and target_patches must have matching shapes.")
-        if mask.shape != reconstructed_patches.shape[:2]:
-            raise ValueError("mask must match the batch and patch dimensions.")
-
-        per_patch_loss = (reconstructed_patches.float() - target_patches.float()).pow(2).mean(dim=-1)
-        if not mask.any():
-            return per_patch_loss.mean() * 0.0
-        return per_patch_loss[mask].mean()
-
-    def patchify(self, images: torch.Tensor) -> torch.Tensor:
-        patches = F.unfold(
-            images,
-            kernel_size=self.patch_size,
-            stride=self.patch_size,
-        )
-        return patches.transpose(1, 2)
-
-    def _sample_mask(self, batch_size: int, num_patches: int, *, device: torch.device) -> torch.Tensor:
-        num_masked = min(num_patches, max(1, int(round(num_patches * self.mask_ratio))))
-        noise = torch.rand(batch_size, num_patches, device=device)
-        sorted_indices = noise.argsort(dim=1)
-        mask = torch.zeros(batch_size, num_patches, dtype=torch.bool, device=device)
-        mask.scatter_(1, sorted_indices[:, :num_masked], True)
-        return mask
-
-    def forward_with_intermediates(self, inputs: torch.Tensor) -> dict[str, torch.Tensor]:
-        adapted = self.adapter(inputs)
-        patch_tokens, grid_size = self.backbone.embed_patches(adapted)
-        mask = self._sample_mask(patch_tokens.shape[0], patch_tokens.shape[1], device=patch_tokens.device)
-        mask_token = self.mask_token.to(device=patch_tokens.device, dtype=patch_tokens.dtype)
-        masked_patch_tokens = torch.where(
-            mask.unsqueeze(-1),
-            mask_token.expand(patch_tokens.shape[0], patch_tokens.shape[1], patch_tokens.shape[2]),
-            patch_tokens,
-        )
-        positioned_tokens = self.backbone.add_position_embeddings(masked_patch_tokens, grid_size)
-        encoded_tokens = self.backbone.encode_tokens(positioned_tokens)
-        reconstructed_patches = self.reconstruction_head(encoded_tokens).to(
-            dtype=_output_dtype(self.reconstruction_precision)
-        )
-        target_patches = self.patchify(adapted.detach().clamp(0.0, 1.0)).to(dtype=reconstructed_patches.dtype)
-        loss = self.compute_masked_loss(reconstructed_patches, target_patches, mask)
-        return {
-            "adapted": adapted,
-            "tokens": encoded_tokens,
-            "mask": mask,
-            "reconstructed_patches": reconstructed_patches,
-            "target_patches": target_patches,
-            "loss": loss,
-        }
+        self.reconstruction_head = _PrecisionLinear(embed_dim, self.patch_dim, precision=self.reconstruction_precision)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        return self.forward_with_intermediates(inputs)["loss"]
+        adapted = self.adapter(inputs)
+        patch_tokens, grid_size = self.backbone.embed_patches(adapted)
+        num_masked = int(round(patch_tokens.shape[1] * self.mask_ratio))
+        noise = torch.rand(patch_tokens.shape[0], patch_tokens.shape[1], device=patch_tokens.device)
+        mask = torch.zeros(patch_tokens.shape[0], patch_tokens.shape[1], dtype=torch.bool, device=patch_tokens.device)
+        mask.scatter_(1, noise.argsort(dim=1)[:, :num_masked], True)
+        masked_tokens = torch.where(mask.unsqueeze(-1), self.mask_token.to(patch_tokens.dtype), patch_tokens)
+        positioned = self.backbone.add_position_embeddings(masked_tokens, grid_size)
+        encoded = self.backbone.encode_tokens(positioned)
+        recon = self.reconstruction_head(encoded).to(dtype=_output_dtype(self.reconstruction_precision))
+        target = F.unfold(adapted.detach().clamp(0.0, 1.0), kernel_size=self.patch_size, stride=self.patch_size).transpose(1, 2).to(recon.dtype)
+        loss = (recon.float() - target.float()).pow(2).mean(dim=-1)
+        return loss[mask].mean()
 
 
 __all__ = [

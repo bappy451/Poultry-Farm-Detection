@@ -78,14 +78,16 @@ py -3.12 -m venv .venv
 
 - `src/poultry_geo/`: Structured production Python package.
 - `scripts/poultry_geo.py`: Direct terminal launcher.
-- `scripts/poultry_geo.ps1` and `scripts/poultry_geo.cmd`: Windows launchers for the full CLI with append-only logging.
-- `scripts/slice_tiles.sh`: Bash wrapper for slicing GeoTIFFs into image tiles.
+- `scripts/poultry_geo.*`: CLI entry point wrappers for Windows (`.cmd`/`.ps1`) and Linux (`.sh`).
+- `scripts/slice_tiles.*`: Wrappers for slicing GeoTIFFs into image tiles.
 - `scripts/train_mim.*`: Wrappers for running self-supervised MAE pretraining on NAIP imagery.
+- `scripts/train_ssl_grid.*`: Wrappers for stateful SSL (MIM) grid search training.
+- `scripts/plot_ssl_grid.*`: Wrappers for generating grid search summary plots.
+- `scripts/plot_run.*`: Wrappers for plotting individual run metrics (loss curves).
 - `scripts/train_segmentation.*`: Wrappers for running stateful grid-search segmentation training (fine-tuning).
+- `scripts/train_spark.*`: Wrappers for SparK SSL pretraining using CNNs.
 - `configs/pipeline.example.json`: Example configuration file for `run-pipeline`.
 - `tests/`: Unit tests for the extracted code and pipeline logic.
-- `notebook/`: Flattened mirror of the original research notebooks.
-- `notebook_new/`: Newer working notebooks and exploratory autosaves.
 - `pyproject.toml`: Package metadata and console entrypoint definitions.
 - `requirements.txt`: Core installation dependencies for package development and tests.
 - `requirements-ml.txt`: Heavier ML installation dependencies for YOLO, export, and SAM models.
@@ -121,14 +123,39 @@ While you can run the application directly using the Python module (`python -m p
 ### Key Scripts
 | Script Name | Purpose | Linux/macOS Usage | Windows Usage |
 |---|---|---|---|
-| `poultry_geo.*` | The generic CLI entry point (same as `python -m poultry_geo`). | `./scripts/poultry_geo.sh --help` | `.\scripts\poultry_geo.cmd --help` |
-| `slice_tiles.*` | Dedicated wrapper for slicing large datasets. | `./scripts/slice_tiles.sh --input-dir ./Data --output-dir ./Tiles` | `.\scripts\slice_tiles.cmd --input-dir .\Data --output-dir .\Tiles` |
-| `train_segmentation.*`| Wrapper for launching stateful grid-search training runs. | `./scripts/train_segmentation.sh --config config.yaml` | `.\scripts\train_segmentation.cmd --config config.yaml` |
-| `train_mim.*` | Wrapper for Masked Image Modeling (MIM) SSL pretraining. | `./scripts/train_mim.sh --data-root ./Data` | `.\scripts\train_mim.cmd --data-root .\Data` |
-| `train_spark.*` | Wrapper for SparK SSL pretraining using CNNs. | `./scripts/train_spark.sh --data-root ./Data` | `.\scripts\train_spark.cmd --data-root .\Data` |
-| `inspect_backbone.*` | Tool to verify tensor shapes for custom backbones before training. | `./scripts/inspect_backbone.sh --data-root ./Data` | `.\scripts\inspect_backbone.cmd --data-root .\Data` |
+| `poultry_geo.*` | Generic CLI entry point. | `./scripts/poultry_geo.sh --help` | `.\scripts\poultry_geo.cmd --help` |
+| `slice_tiles.*` | Slicing massive GeoTIFF datasets. | `./scripts/slice_tiles.sh` | `.\scripts\slice_tiles.cmd` |
+| `train_ssl_grid.*`| Stateful SSL (MIM) grid search. | `./scripts/train_ssl_grid.sh` | `.\scripts\train_ssl_grid.cmd` |
+| `plot_ssl_grid.*` | Summary plots for grid search. | `./scripts/plot_ssl_grid.sh` | `.\scripts\plot_ssl_grid.cmd` |
+| `plot_run.*` | Loss curves for a specific run. | `./scripts/plot_run.sh` | `.\scripts\plot_run.cmd` |
+| `train_mim.*` | Masked Image Modeling SSL. | `./scripts/train_mim.sh` | `.\scripts\train_mim.cmd` |
+| `train_spark.*` | SparK SSL pretraining. | `./scripts/train_spark.sh` | `.\scripts\train_spark.cmd` |
 
-**Important Windows Note:** If you are using Windows, it is highly recommended to use the `.cmd` scripts from the Command Prompt or PowerShell, as they automatically handle invoking PowerShell with `ExecutionPolicy Bypass`.
+**Important Windows Note:** Use the `.cmd` scripts from the Command Prompt or PowerShell, as they handle invoking PowerShell with `ExecutionPolicy Bypass` automatically.
+
+---
+
+## 🧪 Foundation Model Grid Search Workflow
+
+This pipeline supports automated, resume-aware hyperparameter grid searches for Self-Supervised Learning (SSL).
+
+### 1. Start/Resume a Grid Search
+This command will iterate through all permutations in your config, saving each experiment in its own folder under `trained_models/<NAME>`. If the process is stopped, rerunning it will skip completed runs and resume the interrupted one.
+
+*   **Windows:** `.\scripts\train_ssl_grid.cmd --training-name "mim-publication-run" --config ssl_config.yaml`
+*   **Linux:** `./scripts/train_ssl_grid.sh --training-name "mim-publication-run" --config ssl_config.yaml`
+
+### 2. Plot the Summary Results
+Once the grid search finishes (or while it's in progress), generate a summary heatmap/bar chart of all experiments:
+
+*   **Windows:** `.\scripts\plot_ssl_grid.cmd --training-name "mim-publication-run"`
+*   **Linux:** `./scripts/plot_ssl_grid.sh --training-name "mim-publication-run"`
+
+### 3. Plot a Specific Run's Convergence
+To visualize the loss curve for the best performing experiment:
+
+*   **Windows:** `.\scripts\plot_run.cmd "trained_models/mim-publication-run/<EXPERIMENT_ID_FOLDER>"`
+*   **Linux:** `./scripts/plot_run.sh "trained_models/mim-publication-run/<EXPERIMENT_ID_FOLDER>"`
 
 ---
 
@@ -174,28 +201,6 @@ poultry-geo csv-to-kml clean_detections.csv export.kml
 poultry-geo aggregate-counties clean_detections.csv county_summary.csv
 ```
 
-### Foundation Model Research & Experiment Tracking
-The pipeline automatically tracks and logs detailed metrics for all training runs, making it straightforward to include results in research papers.
-
-```bash
-# Train a ViT using Masked Image Modeling (MIM)
-python -m poultry_geo train-mim ./data ./runs/mim --embed-dim 192 --depth 8 --num-heads 6 --device cuda
-
-# Train a ResNet50 using Sparse Masked Modeling (SparK)
-python -m poultry_geo train-spark ./data ./runs/spark --backbone-type resnet50 --precision bf16
-
-# Inspect ViT tensor shapes and adapter logic before a heavy training run
-python -m poultry_geo inspect-backbone ./data --batch-size 2 --crop-size 224
-```
-
-#### Generating Research Figures
-After a training run completes, the metrics are saved natively as `metrics.csv` or `metrics.json` inside the output directory. You can generate publication-ready `.png` loss curves directly from these raw data files:
-
-```bash
-poultry-geo plot-training-logs ./runs/spark ./research_figures
-```
-This will automatically parse the logs (including Ultralytics YOLO `results.csv` files) and output a high-quality, styled matplotlib figure.
-
 ---
 
 ## ⚙️ Configuration-Driven Execution
@@ -206,26 +211,6 @@ For complex workflows, the CLI supports JSON/YAML configuration files to orchest
 Run an entire pipeline (slicing, inference, post-processing, and export) via a single config file:
 ```bash
 poultry-geo run-pipeline configs/pipeline.example.json
-```
-
-### Stateful Grid-Search (Segmentation)
-Fine-tune custom backbones over a massive matrix of hyperparameters. If the process dies, rerunning the command resumes at the exact permutation it failed on.
-```bash
-./scripts/train_segmentation.sh --training-name poultry-seg --config configs/spark_grid_search.yaml
-```
-
-**Example `spark_grid_search.yaml`:**
-```yaml
-data:
-  image_dir: ./data/images
-  mask_dir: ./data/masks
-  image_size: 256
-  batch_size: 8
-
-grid_search:
-  backbone: ["resnet50", "vit_base_patch16_224"]
-  learning_rate: [0.0001, 0.0005]
-  use_lora: [false, true]
 ```
 
 ---

@@ -120,7 +120,8 @@ try {
     }
     else {
         $pythonExe = Resolve-PreferredPython -CodeDir $codeDir -RequestedPython $pythonExe
-        $commandArgs = @("-m", "poultry_geo", "--no-log") + $forwardArgs.ToArray()
+        $pythonScript = Join-Path $scriptDir "poultry_geo.py"
+        $commandArgs = @($pythonScript, "--no-log") + $forwardArgs.ToArray()
         if ($loggingEnabled) {
             Write-ProjectLogLine -LogFile $logFile -Line ("Running: " + (Format-CommandString (@($pythonExe) + $commandArgs)))
             $exitCode = Invoke-ProjectNativeCommand -Executable $pythonExe -Arguments $commandArgs -LogFile $logFile -CaptureToLog

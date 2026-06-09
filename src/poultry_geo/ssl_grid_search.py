@@ -13,23 +13,54 @@ import pandas as pd
 import torch
 import yaml
 
+import platform
+import time
 from poultry_geo.checkpoint_manager import StateManager, normalize_training_name
 from poultry_geo.grid_search import resolve_runtime_device
 from poultry_geo.naip_data import get_dataloaders
-from poultry_geo.ssl_models import SUPPORTED_PRECISIONS, RemoteSensingMIMModel
+from poultry_geo.ssl_models import SUPPORTED_PRECISIONS, RemoteSensingMIMModel, VIT_CONFIGS
 from poultry_geo.optimizers import build_optimizer
 
 
 SSL_GRID_KEYS = (
-    "embed_dim",
-    "depth",
-    "num_heads",
+    "model_name",
+    "use_lora",
+    "freeze_backbone",
     "mask_ratio",
+    "drop_path_rate",
     "optimizer",
     "precision",
     "learning_rate",
     "weight_decay",
+    "warmup_epochs",
 )
+
+
+def get_system_info() -> dict[str, Any]:
+    info = {
+        "platform": platform.platform(),
+        "processor": platform.processor(),
+        "python_version": platform.python_version(),
+        "torch_version": torch.__version__,
+        "cuda_available": torch.cuda.is_available(),
+    }
+    if torch.cuda.is_available():
+        info["gpu_count"] = torch.cuda.device_count()
+        info["gpu_name"] = torch.cuda.get_device_name(0)
+    return info
+
+
+def build_scheduler(optimizer: torch.optim.Optimizer, total_epochs: int, warmup_epochs: int):
+    """
+    Builds a Linear Warmup + Cosine Decay scheduler.
+    """
+    def lr_lambda(epoch):
+        if epoch < warmup_epochs:
+            return float(epoch) / float(max(1, warmup_epochs))
+        progress = float(epoch - warmup_epochs) / float(max(1, total_epochs - warmup_epochs))
+        return 0.5 * (1.0 + np.cos(np.pi * progress))
+
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
 
 def load_ssl_grid_search_config(config_path: str | Path) -> dict[str, Any]:
@@ -107,30 +138,44 @@ def run_stateful_ssl_grid_search(
     normalized_training_name = normalize_training_name(training_name)
     campaign_dir = Path(root_dir) / normalized_training_name
     campaign_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Save the original config for reference
+    with open(campaign_dir / "campaign_config.yaml", "w", encoding="utf-8") as f:
+        yaml.dump(config, f)
+    
+    # Log system info
+    system_info = get_system_info()
+    with open(campaign_dir / "system_info.json", "w", encoding="utf-8") as f:
+        json.dump(system_info, f, indent=2)
 
     records: list[dict[str, Any]] = []
     for experiment_index, experiment in enumerate(experiments):
         grid = experiment["grid"]
         signature = json.dumps(experiment, sort_keys=True, separators=(",", ":"))
         experiment_id = hashlib.sha1(signature.encode("utf-8")).hexdigest()[:12]
+        model_name = str(grid["model_name"]).upper()
+        precision_str = str(grid["precision"]).strip().lower()
+        folder_name = f"{experiment_id}_{model_name}_{precision_str}"
         
         record = {
             "experiment_id": experiment_id,
             "training_name": normalized_training_name,
-            "embed_dim": grid["embed_dim"],
-            "depth": grid["depth"],
-            "num_heads": grid["num_heads"],
+            "model_name": model_name,
+            "use_lora": grid["use_lora"],
+            "freeze_backbone": grid["freeze_backbone"],
             "mask_ratio": grid["mask_ratio"],
+            "drop_path_rate": grid["drop_path_rate"],
             "optimizer": grid["optimizer"],
             "precision": grid["precision"],
             "learning_rate": grid["learning_rate"],
             "weight_decay": grid["weight_decay"],
+            "warmup_epochs": grid["warmup_epochs"],
             "status": "pending",
             "reason": "",
             "last_epoch": 0,
             "final_loss": np.nan,
             "best_loss": np.nan,
-            "run_dir": str(campaign_dir / experiment_id),
+            "run_dir": str(campaign_dir / folder_name),
             "resolved_device": "",
             "resolved_precision": "",
         }
@@ -140,18 +185,20 @@ def run_stateful_ssl_grid_search(
             precision = str(grid["precision"]).strip().lower()
             if precision not in SUPPORTED_PRECISIONS:
                 raise ValueError(f"precision must be one of: {', '.join(SUPPORTED_PRECISIONS)}")
-            if precision == "fp16" and resolved_device.type != "cuda":
-                raise ValueError("fp16 training requires a CUDA device.")
 
+            vit_params = VIT_CONFIGS.get(model_name, VIT_CONFIGS["B"])
             model = RemoteSensingMIMModel(
                 in_channels=int(experiment["data"]["n_channels"]),
                 image_size=int(experiment["data"]["image_size"]),
                 patch_size=16,
-                embed_dim=int(grid["embed_dim"]),
-                depth=int(grid["depth"]),
-                num_heads=int(grid["num_heads"]),
+                embed_dim=vit_params["embed_dim"],
+                depth=vit_params["depth"],
+                num_heads=vit_params["num_heads"],
                 precision=precision,
                 mask_ratio=float(grid["mask_ratio"]),
+                use_lora=bool(grid["use_lora"]),
+                freeze_backbone=bool(grid["freeze_backbone"]),
+                drop_path_rate=float(grid["drop_path_rate"]),
             ).to(resolved_device)
             
             optimizer = build_optimizer(
@@ -160,20 +207,29 @@ def run_stateful_ssl_grid_search(
                 lr=float(grid["learning_rate"]),
                 weight_decay=float(grid["weight_decay"]),
             )
-            scaler = torch.amp.GradScaler(
-                "cuda",
+            
+            scheduler = build_scheduler(
+                optimizer, 
+                total_epochs=total_epochs, 
+                warmup_epochs=int(grid["warmup_epochs"])
+            )
+
+            scaler = torch.cuda.amp.GradScaler(
                 enabled=resolved_device.type == "cuda" and precision == "fp16",
             )
             manager = StateManager(
                 config=experiment,
                 training_name=normalized_training_name,
-                experiment_id=experiment_id,
+                experiment_id=folder_name,
                 root_dir=root_dir,
             )
             run_state = manager.prepare(model, optimizer, scaler)
+            if hasattr(run_state, "scheduler_state") and run_state.scheduler_state:
+                scheduler.load_state_dict(run_state.scheduler_state)
 
             print(f"\n--- Starting Experiment: {experiment_id} ---")
-            print(f"Parameters: embed_dim={grid['embed_dim']}, depth={grid['depth']}, lr={grid['learning_rate']}, wd={grid['weight_decay']}")
+            print(f"{folder_name}")
+            print(f"Parameters: model={model_name}, lora={grid['use_lora']}, freeze={grid['freeze_backbone']}, dpr={grid['drop_path_rate']}, lr={grid['learning_rate']}")
             print(f"Directory: {manager.run_dir}")
 
             train_loader, _ = get_dataloaders(
@@ -188,6 +244,7 @@ def run_stateful_ssl_grid_search(
             )
 
             for epoch_index in range(run_state.start_epoch, total_epochs):
+                start_time = time.time()
                 loss = _train_one_epoch(
                     model,
                     train_loader,
@@ -201,26 +258,37 @@ def run_stateful_ssl_grid_search(
                     total_experiments=len(experiments),
                     total_epochs=total_epochs,
                 )
+                scheduler.step()
+                duration = time.time() - start_time
+                
                 manager.append_metrics(
                     epoch=epoch_index + 1,
                     loss=loss,
                     accuracy=0.0,
                     evaluation_matrix=[[0,0], [0,0]],
+                    lr=optimizer.param_groups[0]["lr"],
+                    duration=duration,
                 )
-                manager.save_checkpoint(model, optimizer, scaler, epoch=epoch_index)
-                print(f"  Epoch {epoch_index + 1}/{total_epochs} - Loss: {loss:.6f}")
+                # Store scheduler state in checkpoint
+                payload = manager._load_payload() if manager.checkpoint_path.exists() else {}
+                payload["scheduler"] = scheduler.state_dict()
+                manager.save_checkpoint(model, optimizer, scaler, epoch=epoch_index, payload=payload)
+                print(f"  Epoch {epoch_index + 1}/{total_epochs} - Loss: {loss:.6f} - LR: {optimizer.param_groups[0]['lr']:.2e}")
 
             metrics_frame = pd.read_csv(manager.metrics_path)
             record["status"] = "ok"
             record["last_epoch"] = int(metrics_frame["epoch"].iloc[-1])
             record["final_loss"] = float(metrics_frame["loss"].iloc[-1])
             record["best_loss"] = float(metrics_frame["loss"].min())
+            record["run_dir"] = str(manager.run_dir)
             record["resolved_device"] = str(resolved_device)
             record["resolved_precision"] = precision
             print(f"Experiment {experiment_id} finished. Best Loss: {record['best_loss']:.6f}\n")
         except Exception as exc:
             record["status"] = "error"
             record["reason"] = str(exc)
+            import traceback
+            traceback.print_exc()
             print(f"Experiment {experiment_id} failed: {exc}\n")
         records.append(record)
 
@@ -238,9 +306,10 @@ def run_stateful_ssl_grid_search(
         print(f"Best Loss     : {best_run['best_loss']:.6f}")
         print("-------------------------------------------------------")
         print("Winning Parameters:")
-        print(f"  embed_dim     = {best_run['embed_dim']}")
-        print(f"  depth         = {best_run['depth']}")
-        print(f"  num_heads     = {best_run['num_heads']}")
+        print(f"  model_name    = {best_run['model_name']}")
+        print(f"  use_lora      = {best_run['use_lora']}")
+        print(f"  freeze        = {best_run['freeze_backbone']}")
+        print(f"  optimizer     = {best_run['optimizer']}")
         print(f"  learning_rate = {best_run['learning_rate']}")
         print(f"  weight_decay  = {best_run['weight_decay']}")
         print("=======================================================\n")

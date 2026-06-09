@@ -21,6 +21,7 @@ class RunState:
     seed: int
     run_dir: Path
     config: dict[str, Any]
+    scheduler_state: dict[str, Any] | None = None
 
 
 def normalize_training_name(training_name: str) -> str:
@@ -59,45 +60,49 @@ class StateManager:
         self.campaign_dir.mkdir(parents=True, exist_ok=True)
         if not self.run_dir.exists():
             return self._prepare_new_run()
-        if not self.config_path.exists():
-            raise FileNotFoundError(
-                f"Existing run directory '{self.run_dir}' is missing config_history.yaml."
-            )
-        if not self.checkpoint_path.exists():
-            raise FileNotFoundError(
-                f"Existing run directory '{self.run_dir}' is missing model_checkpoint.pt."
-            )
+        
+        # If the directory exists but critical files are missing, we should 
+        # probably just treat it as a fresh start or at least not crash.
+        # For simplicity and robustness in grid searches, we'll start fresh.
+        if not self.config_path.exists() or not self.checkpoint_path.exists():
+            print(f"[warning] Run directory '{self.run_dir}' is incomplete. Starting fresh.")
+            # Clear existing files to avoid confusion
+            for file in self.run_dir.iterdir():
+                if file.is_file():
+                    file.unlink()
+            return self._prepare_new_run()
+
         return self._prepare_resume(model, optimizer, scaler)
 
     def append_metrics(
         self,
         *,
         epoch: int,
-        loss: float,
-        accuracy: float,
-        evaluation_matrix: list[list[int]] | tuple[tuple[int, int], tuple[int, int]],
+        **metrics: Any,
     ) -> None:
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        row = {
-            "epoch": int(epoch),
-            "loss": float(loss),
-            "accuracy": float(accuracy),
-            "evaluation_matrix_json": json.dumps(evaluation_matrix),
-        }
+        row: dict[str, Any] = {"epoch": int(epoch)}
+        for key, value in metrics.items():
+            if isinstance(value, (list, dict, tuple)):
+                row[key] = json.dumps(value)
+            else:
+                row[key] = value
+        
         write_header = not self.metrics_path.exists()
+        fieldnames = list(row.keys())
+        
+        # If the file exists, we might need to reconcile fieldnames, 
+        # but for now we'll assume consistency within a single run.
         with self.metrics_path.open("a", encoding="utf-8", newline="") as handle:
-            writer = csv.DictWriter(
-                handle,
-                fieldnames=["epoch", "loss", "accuracy", "evaluation_matrix_json"],
-            )
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
             if write_header:
                 writer.writeheader()
             writer.writerow(row)
 
-    def save_checkpoint(self, model, optimizer, scaler, *, epoch: int) -> None:
+    def save_checkpoint(self, model, optimizer, scaler=None, *, epoch: int, payload: dict[str, Any] | None = None) -> None:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         seed = self._resolve_seed(self.config)
-        payload = {
+        save_data = {
             "epoch": int(epoch),
             "seed": int(seed),
             "model_state_dict": model.state_dict(),
@@ -105,7 +110,16 @@ class StateManager:
             "scaler_state_dict": self._extract_scaler_state(scaler),
             "rng_state": self._capture_rng_state(),
         }
-        self._atomic_torch_save(payload, self.checkpoint_path)
+        if payload:
+            save_data.update(payload)
+            
+        self._atomic_torch_save(save_data, self.checkpoint_path)
+
+    def _load_payload(self) -> dict[str, Any]:
+        """Utility for ssl_grid_search to load existing checkpoint data."""
+        if not self.checkpoint_path.exists():
+            return {}
+        return torch.load(self.checkpoint_path, map_location="cpu", weights_only=False)
 
     def _prepare_new_run(self) -> RunState:
         self.run_dir.mkdir(parents=True, exist_ok=True)
@@ -155,6 +169,7 @@ class StateManager:
             seed=stored_seed,
             run_dir=self.run_dir,
             config=stored_config,
+            scheduler_state=checkpoint.get("scheduler"),
         )
 
     @staticmethod

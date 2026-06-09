@@ -105,3 +105,87 @@ def plot_training_logs(run_dir: str | Path, output_dir: str | Path):
     fig.savefig(out_file)
     plt.close(fig)
     return out_file
+
+
+def plot_grid_search_results(results_csv: str | Path, output_dir: str | Path):
+    """
+    Generates professional-grade summary visualizations for grid search campaigns.
+    Creates a performance comparison across different hyperparameter combinations.
+    """
+    results_csv = Path(results_csv)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    if not results_csv.exists():
+        raise FileNotFoundError(f"Grid search results not found: {results_csv}")
+        
+    df = pd.read_csv(results_csv)
+    successful = df[df['status'] == 'ok'].copy()
+    
+    if successful.empty:
+        print("No successful runs found to plot.")
+        return None
+        
+    set_academic_style()
+    
+    # Sort by best loss
+    successful = successful.sort_values('best_loss', ascending=True)
+    top_n = min(len(successful), 15)
+    successful = successful.head(top_n)
+    
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    # Create descriptive labels for the y-axis
+    labels = []
+    for _, row in successful.iterrows():
+        label = f"{row['model_name']} | {row['optimizer']} | lr={row['learning_rate']} | {row['precision']}"
+        labels.append(label)
+        
+    y_pos = range(len(labels))
+    bars = ax.barh(y_pos, successful['best_loss'], color='#004c99', edgecolor='black', alpha=0.8)
+    
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(labels)
+    ax.invert_yaxis()  # Best on top
+    ax.set_xlabel('Minimum Reconstruction Loss (MSE)')
+    ax.set_title(f'SSL Grid Search: Top {top_n} Experiment Performance')
+    ax.grid(True, axis='x', linestyle='--', alpha=0.6)
+    
+    # Add loss values to the end of bars
+    for bar in bars:
+        width = bar.get_width()
+        ax.text(width + (width * 0.01), bar.get_y() + bar.get_height()/2, 
+                f'{width:.4f}', va='center', fontsize=10, fontweight='bold')
+
+    out_file = output_dir / "grid_search_summary.png"
+    fig.savefig(out_file)
+    plt.close(fig)
+    return out_file
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Professional visualization of training and grid search metrics.")
+    subparsers = parser.add_subparsers(dest="command")
+    
+    run_parser = subparsers.add_parser("plot-run", help="Plot metrics for a single run.")
+    run_parser.add_argument("run_dir", help="Directory containing metrics.json/csv")
+    run_parser.add_argument("--output-dir", default="plots", help="Where to save plots")
+    
+    grid_parser = subparsers.add_parser("plot-grid", help="Plot grid search summary results.")
+    grid_parser.add_argument("results_csv", help="Path to grid_search_results.csv")
+    grid_parser.add_argument("--output-dir", default="plots", help="Where to save summary plots")
+    
+    args = parser.parse_args()
+    
+    if args.command == "plot-run":
+        out = plot_training_logs(args.run_dir, args.output_dir)
+        print(f"Plot saved to {out}")
+    elif args.command == "plot-grid":
+        out = plot_grid_search_results(args.results_csv, args.output_dir)
+        if out:
+            print(f"Summary plot saved to {out}")
+    else:
+        parser.print_help()
+
+if __name__ == "__main__":
+    main()

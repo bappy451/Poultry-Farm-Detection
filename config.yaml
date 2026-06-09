@@ -1,5 +1,5 @@
 data:
-  image_dir: C:\Users\mza0288\Documents\Poultry-Farm-Detection\tmp\test_jpg
+  image_dir: ./tmp/test_jpg
   mask_dir: ./tmp/segmentation/masks
   image_size: 256
   n_channels: 3

@@ -73,7 +73,12 @@ while ($index -lt $originalArgs.Count) {
             continue
         }
         default {
-            $forwardArgs.Add($token) | Out-Null
+            if ([string]::IsNullOrWhiteSpace($trainingName)) {
+                $trainingName = $token
+            }
+            else {
+                $forwardArgs.Add($token) | Out-Null
+            }
             $index += 1
             continue
         }

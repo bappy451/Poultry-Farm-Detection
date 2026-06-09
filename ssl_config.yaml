@@ -1,5 +1,5 @@
 data:
-  image_dir: C:/Users/mza0288/Documents/Poultry-Farm-Detection/tmp/test_jpg
+  image_dir: ./tmp/test_jpg
   image_size: 224
   n_channels: 3
   batch_size: 16
@@ -9,25 +9,49 @@ runtime:
   device: auto
   seed: 27
   output_dir: ./runs/ssl-grid-search
-  epochs: 50
+  epochs: 1
 
 grid_search:
-  embed_dim:
-    - 192   # Tiny
-    - 384   # Small
-  depth:
-    - 8     # Tiny
-    - 12    # Small
-  num_heads:
-    - 6
+  # ViT variants: S (Small), B (Base), L (Large), H (Huge)
+  model_name:
+    - S
+    - B
+    - L
+    - H
+  
+  use_lora:
+    - false
+    - true
+  
+  freeze_backbone:
+    - false
+    - true
+
   mask_ratio:
     - 0.75
+
+  # Stochastic Depth (DropPath) Rate
+  # Recommended for deep models (L/H): 0.1-0.2
+  drop_path_rate:
+    - 0.1
+    
   optimizer:
     - adamw
+    - adan
+    - lion
+    - sophia
+    
   precision:
-    - bf16
+    - fp16
+    - fp32
+    
   learning_rate:
     - 0.0001
     - 0.0005
+    
   weight_decay:
     - 0.05
+
+  # Linear Warmup duration (epochs)
+  warmup_epochs:
+    - 5
