@@ -174,7 +174,9 @@ poultry-geo csv-to-kml clean_detections.csv export.kml
 poultry-geo aggregate-counties clean_detections.csv county_summary.csv
 ```
 
-### Foundation Model Research (SSL)
+### Foundation Model Research & Experiment Tracking
+The pipeline automatically tracks and logs detailed metrics for all training runs, making it straightforward to include results in research papers.
+
 ```bash
 # Train a ViT using Masked Image Modeling (MIM)
 python -m poultry_geo train-mim ./data ./runs/mim --embed-dim 192 --depth 8 --num-heads 6 --device cuda
@@ -185,6 +187,14 @@ python -m poultry_geo train-spark ./data ./runs/spark --backbone-type resnet50 -
 # Inspect ViT tensor shapes and adapter logic before a heavy training run
 python -m poultry_geo inspect-backbone ./data --batch-size 2 --crop-size 224
 ```
+
+#### Generating Research Figures
+After a training run completes, the metrics are saved natively as `metrics.csv` or `metrics.json` inside the output directory. You can generate publication-ready `.png` loss curves directly from these raw data files:
+
+```bash
+poultry-geo plot-training-logs ./runs/spark ./research_figures
+```
+This will automatically parse the logs (including Ultralytics YOLO `results.csv` files) and output a high-quality, styled matplotlib figure.
 
 ---
 

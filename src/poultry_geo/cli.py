@@ -748,6 +748,14 @@ def build_parser() -> argparse.ArgumentParser:
     spark_grid_parser.add_argument("--epochs", type=int, default=None, help="Override runtime.epochs from the config.")
     spark_grid_parser.add_argument("--root-dir", default="trained_models", help="Root directory for saved runs.")
 
+    plot_parser = _add_command_parser(
+        subparsers,
+        "plot-training-logs",
+        help_text="Generate publication-ready plots from training log files (metrics.json or metrics.csv).",
+    )
+    plot_parser.add_argument("run_dir", help="Directory containing metrics.json, metrics.csv, or results.csv.")
+    plot_parser.add_argument("output_dir", help="Directory to save the generated figures.")
+
     return parser
 
 
@@ -1271,6 +1279,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Starting SparK training on {device}...")
             os.makedirs(args.output_dir, exist_ok=True)
             
+            import pandas as pd
+            history = []
+            
             for epoch in range(args.epochs):
                 model.train()
                 epoch_loss = 0
@@ -1285,6 +1296,14 @@ def main(argv: list[str] | None = None) -> int:
                 
                 avg_loss = epoch_loss / len(train_loader)
                 print(f"Epoch {epoch} complete. Avg Loss: {avg_loss:.4f}")
+                
+                # Record metrics
+                history.append({
+                    "epoch": epoch + 1,
+                    "train_loss": avg_loss,
+                    "lr": args.learning_rate
+                })
+                pd.DataFrame(history).to_csv(os.path.join(args.output_dir, "metrics.csv"), index=False)
                 
                 # Save checkpoints
                 train_spark_ssl.save_spark_checkpoint(model, config, args.output_dir, epoch)
@@ -1488,6 +1507,12 @@ def main(argv: list[str] | None = None) -> int:
                 progress_callback=progress_callback,
             )
             print(results.to_string(index=False))
+            return 0
+
+        if args.command == "plot-training-logs":
+            from poultry_geo.plot_metrics import plot_training_logs
+            out_file = plot_training_logs(args.run_dir, args.output_dir)
+            print(f"Generated plot written to {out_file}")
             return 0
 
         parser.error(f"Unknown command: {args.command}")
