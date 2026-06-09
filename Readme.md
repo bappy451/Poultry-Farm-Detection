@@ -74,6 +74,25 @@ py -3.12 -m venv .venv
 
 ---
 
+## 🗂️ Project Layout
+
+- `src/poultry_geo/`: Structured production Python package.
+- `scripts/poultry_geo.py`: Direct terminal launcher.
+- `scripts/poultry_geo.ps1` and `scripts/poultry_geo.cmd`: Windows launchers for the full CLI with append-only logging.
+- `scripts/slice_tiles.sh`: Bash wrapper for slicing GeoTIFFs into image tiles.
+- `scripts/train_mim.*`: Wrappers for running self-supervised MAE pretraining on NAIP imagery.
+- `scripts/train_segmentation.*`: Wrappers for running stateful grid-search segmentation training (fine-tuning).
+- `configs/pipeline.example.json`: Example configuration file for `run-pipeline`.
+- `tests/`: Unit tests for the extracted code and pipeline logic.
+- `notebook/`: Flattened mirror of the original research notebooks.
+- `notebook_new/`: Newer working notebooks and exploratory autosaves.
+- `pyproject.toml`: Package metadata and console entrypoint definitions.
+- `requirements.txt`: Core installation dependencies for package development and tests.
+- `requirements-ml.txt`: Heavier ML installation dependencies for YOLO, export, and SAM models.
+- `Makefile`: Convenience setup and testing commands.
+
+---
+
 ## 🏗️ Architecture & Modules
 
 The core functionality lives under `src/poultry_geo/`:
