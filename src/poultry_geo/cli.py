@@ -1280,11 +1280,26 @@ def main(argv: list[str] | None = None) -> int:
             os.makedirs(args.output_dir, exist_ok=True)
             
             import pandas as pd
+            import time
+            import json
+            import platform
             history = []
+            
+            # Record initial experiment metadata
+            experiment_info = {
+                "system": platform.platform(),
+                "python_version": platform.python_version(),
+                "device": str(device),
+                "args": vars(args),
+                "start_time": time.time()
+            }
+            with open(os.path.join(args.output_dir, "experiment_info.json"), "w") as f:
+                json.dump(experiment_info, f, indent=4)
             
             for epoch in range(args.epochs):
                 model.train()
                 epoch_loss = 0
+                epoch_start_time = time.time()
                 for i, batch in enumerate(train_loader):
                     img = batch["image"].to(device)
                     loss = train_spark_ssl.train_one_step(
@@ -1294,19 +1309,26 @@ def main(argv: list[str] | None = None) -> int:
                     if i % 10 == 0:
                         print(f"Epoch {epoch} | Batch {i} | Loss: {loss:.4f}")
                 
+                epoch_duration = time.time() - epoch_start_time
                 avg_loss = epoch_loss / len(train_loader)
-                print(f"Epoch {epoch} complete. Avg Loss: {avg_loss:.4f}")
+                print(f"Epoch {epoch} complete in {epoch_duration:.2f}s. Avg Loss: {avg_loss:.4f}")
                 
                 # Record metrics
                 history.append({
                     "epoch": epoch + 1,
                     "train_loss": avg_loss,
-                    "lr": args.learning_rate
+                    "lr": args.learning_rate,
+                    "epoch_duration_seconds": epoch_duration
                 })
                 pd.DataFrame(history).to_csv(os.path.join(args.output_dir, "metrics.csv"), index=False)
                 
                 # Save checkpoints
                 train_spark_ssl.save_spark_checkpoint(model, config, args.output_dir, epoch)
+
+            experiment_info["end_time"] = time.time()
+            experiment_info["total_duration_seconds"] = experiment_info["end_time"] - experiment_info["start_time"]
+            with open(os.path.join(args.output_dir, "experiment_info.json"), "w") as f:
+                json.dump(experiment_info, f, indent=4)
 
             return 0
 

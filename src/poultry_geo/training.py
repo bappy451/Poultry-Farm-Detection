@@ -175,8 +175,21 @@ class SSLTrainer:
         return {"loss": mean_loss, "batches": len(losses)}
 
     def fit(self, epochs: int, output_dir: str | Path) -> SSLTrainingSummary:
+        import time
+        import platform
+
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Track full experiment telemetry
+        start_time = time.time()
+        system_info = {
+            "platform": platform.platform(),
+            "python_version": platform.python_version(),
+            "device": str(self.device),
+            "start_time": start_time
+        }
+
         history: list[dict[str, Any]] = []
         best_metric = float("inf")
         final_train_loss: float | None = None
@@ -184,8 +197,11 @@ class SSLTrainer:
         total_epochs = int(epochs)
 
         for epoch_index in range(total_epochs):
+            epoch_start_time = time.time()
             train_metrics = self.train_epoch(epoch_index, total_epochs=total_epochs)
             val_metrics = self.evaluate(epoch_index) if self.val_loader is not None else {"loss": None, "batches": 0}
+            epoch_duration = time.time() - epoch_start_time
+
             final_train_loss = train_metrics["loss"]
             final_val_loss = val_metrics["loss"]
             metric = final_val_loss if final_val_loss is not None else final_train_loss
@@ -196,6 +212,7 @@ class SSLTrainer:
                 "epoch": epoch_index + 1,
                 "train_loss": final_train_loss,
                 "val_loss": final_val_loss,
+                "epoch_duration_seconds": epoch_duration
             }
             history.append(epoch_record)
             checkpoint = {
@@ -211,11 +228,21 @@ class SSLTrainer:
                 best_metric = metric
                 torch.save(checkpoint, output_dir / "best.pt")
 
+        end_time = time.time()
+        system_info["end_time"] = end_time
+        system_info["total_duration_seconds"] = end_time - start_time
+
         model_metadata = getattr(self.model, "module", self.model)
         metrics_path = output_dir / "metrics.json"
+        
+        # Save a parallel CSV file purely for ease of use in R/Excel
+        import pandas as pd
+        pd.DataFrame(history).to_csv(output_dir / "metrics.csv", index=False)
+
         metrics_path.write_text(
             json.dumps(
                 {
+                    "system_info": system_info,
                     "history": history,
                     "requested_precision": getattr(model_metadata, "requested_precision", self.requested_precision),
                     "resolved_precision": getattr(model_metadata, "resolved_precision", self.requested_precision),
