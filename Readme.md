@@ -8,6 +8,8 @@
 
 This project bridges the gap between exploratory data science and robust production engineering. It automates the entire lifecycle of geospatial object detection—from raw GeoTIFF preprocessing to advanced machine learning inference, and finally to GIS-ready vector exports and county-level analytics. 
 
+**Context:** The primary goal of this tool is to identify and map poultry houses using high-resolution aerial imagery (NAIP). By extracting precise footprints and clustering them into active farm units, researchers and policymakers can model agricultural density, estimate roof runoff, and assess potential environmental impacts on local watersheds.
+
 Whether you are training custom self-supervised models on remote sensing data or running bulk inference across terabytes of imagery, this pipeline provides a highly optimized, CLI-driven interface.
 
 ---
@@ -85,6 +87,29 @@ The core functionality lives under `src/poultry_geo/`:
 | `training.py` | Wraps Ultralytics engines for streamlined YOLO/RT-DETR training. |
 | `ssl_models.py` | Implements the adapters, ViTs, and decoders for MAE and SparK self-supervised learning. |
 | `analytics.py` | Performs county-level aggregations and statistical bootstrapping for runoff. |
+
+---
+
+## 🖥️ Cross-Platform Script Execution
+
+While you can run the application directly using the Python module (`python -m poultry_geo <command>`), we provide dedicated wrapper scripts in the `scripts/` directory to simplify execution across different operating systems. These wrappers handle environment paths, bypass Windows execution policies safely, and ensure consistent logging.
+
+### Understanding the Wrappers
+- **`.sh` scripts:** Bash wrappers for macOS and Linux.
+- **`.cmd` scripts:** Command Prompt wrappers for Windows. These act as launchers that call the `.ps1` files.
+- **`.ps1` scripts:** PowerShell scripts containing the actual Windows execution logic. (You rarely need to call these directly; use the `.cmd` files instead).
+
+### Key Scripts
+| Script Name | Purpose | Linux/macOS Usage | Windows Usage |
+|---|---|---|---|
+| `poultry_geo.*` | The generic CLI entry point (same as `python -m poultry_geo`). | `./scripts/poultry_geo.sh --help` | `.\scripts\poultry_geo.cmd --help` |
+| `slice_tiles.*` | Dedicated wrapper for slicing large datasets. | `./scripts/slice_tiles.sh --input-dir ./Data --output-dir ./Tiles` | `.\scripts\slice_tiles.cmd --input-dir .\Data --output-dir .\Tiles` |
+| `train_segmentation.*`| Wrapper for launching stateful grid-search training runs. | `./scripts/train_segmentation.sh --config config.yaml` | `.\scripts\train_segmentation.cmd --config config.yaml` |
+| `train_mim.*` | Wrapper for Masked Image Modeling (MIM) SSL pretraining. | `./scripts/train_mim.sh --data-root ./Data` | `.\scripts\train_mim.cmd --data-root .\Data` |
+| `train_spark.*` | Wrapper for SparK SSL pretraining using CNNs. | `./scripts/train_spark.sh --data-root ./Data` | `.\scripts\train_spark.cmd --data-root .\Data` |
+| `inspect_backbone.*` | Tool to verify tensor shapes for custom backbones before training. | `./scripts/inspect_backbone.sh --data-root ./Data` | `.\scripts\inspect_backbone.cmd --data-root .\Data` |
+
+**Important Windows Note:** If you are using Windows, it is highly recommended to use the `.cmd` scripts from the Command Prompt or PowerShell, as they automatically handle invoking PowerShell with `ExecutionPolicy Bypass`.
 
 ---
 
