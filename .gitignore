@@ -17,6 +17,7 @@ dist/
 
 # Logs and temp working directories
 *.log
+*.log.*
 logs/
 **/logs/
 command.log

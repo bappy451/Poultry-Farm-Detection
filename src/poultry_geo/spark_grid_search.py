@@ -107,7 +107,8 @@ def run_stateful_spark_grid_search(
                 warmup_epochs=int(grid.get("warmup_epochs", 0))
             )
 
-            scaler = torch.cuda.amp.GradScaler(
+            scaler = torch.amp.GradScaler(
+                device="cuda",
                 enabled=resolved_device.type == "cuda" and precision == "fp16",
             )
 

@@ -1,9 +1,9 @@
 data:
-  image_dir: ./tmp/test_jpg
+  image_dir: ./temp/test_512
   image_size: 224
   n_channels: 3
-  batch_size: 16
-  num_workers: 4
+  batch_size: 256
+  num_workers: 16
 
 runtime:
   device: auto
@@ -21,11 +21,11 @@ grid_search:
   
   use_lora:
     - false
-    - true
+    # - true
   
   freeze_backbone:
     - false
-    - true
+    # - true
 
   mask_ratio:
     - 0.75
@@ -38,11 +38,11 @@ grid_search:
   optimizer:
     - adamw
     - adan
-    - lion
-    - sophia
+    # - lion
+    # - sophia
     
   precision:
-    - fp16
+    # - fp16
     - fp32
     
   learning_rate:

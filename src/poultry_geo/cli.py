@@ -1303,7 +1303,7 @@ def main(argv: list[str] | None = None) -> int:
             ).to(device)
 
             optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
-            scaler = torch.cuda.amp.GradScaler(enabled=(args.precision != "fp32"))
+            scaler = torch.amp.GradScaler(device="cuda", enabled=(args.precision != "fp32"))
             config = train_spark_ssl.SparKConfig(
                 mask_ratio=args.mask_ratio,
                 backbone_type=args.backbone_type,

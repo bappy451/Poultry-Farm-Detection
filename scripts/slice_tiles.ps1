@@ -204,8 +204,9 @@ try {
     }
     else {
         $pythonExe = Resolve-PreferredPython -CodeDir $codeDir -RequestedPython $pythonExe
+        $pythonScript = Join-Path $scriptDir "poultry_geo.py"
         $commandArgs = @(
-            "-m", "poultry_geo", "--no-log", "slice",
+            $pythonScript, "--no-log", "slice",
             $inputDir,
             $outputDir,
             "--tile-size", $tileSize,

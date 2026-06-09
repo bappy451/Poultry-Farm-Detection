@@ -105,7 +105,7 @@ def train_one_step(model, optimizer, scaler, transformer, batch, config):
     elif config.precision == 'BF16': dtype = torch.bfloat16
     
     # Use Automatic Mixed Precision (AMP) to speed up training on supported GPUs
-    with torch.cuda.amp.autocast(enabled=(config.precision != 'FP32'), dtype=dtype):
+    with torch.amp.autocast(device_type='cuda', enabled=(config.precision != 'FP32'), dtype=dtype):
         # 1. Transform dense input into a SparseConvTensor (Visible pixels only)
         sparse_tensor, mask = transformer(batch)
         
