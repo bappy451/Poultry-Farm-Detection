@@ -416,6 +416,18 @@ def _slice_single_geotiff_job(
 
 
 def stitch_geotiff_tiles(input_dir: str | Path, output_geotiff: str | Path) -> Path:
+    """
+    Reconstructs a full GeoTIFF from a directory of TIFF tile slices.
+    
+    This implementation is memory-efficient; it uses windowed writing to process 
+    tiles one by one, ensuring that the entire final raster is never loaded 
+    into RAM at once. This is critical for high-resolution datasets where 
+    the final image can exceed available memory.
+    
+    Args:
+        input_dir: Directory containing 'slice_row_col.tif' files.
+        output_geotiff: Destination path for the stitched raster.
+    """
     input_dir = Path(input_dir)
     output_geotiff = Path(output_geotiff)
     slice_files = sorted(path for path in input_dir.glob("slice_*_*.tif") if path.is_file())
@@ -428,6 +440,7 @@ def stitch_geotiff_tiles(input_dir: str | Path, output_geotiff: str | Path) -> P
             raise ValueError(f"Unsupported tile filename: {path.name}")
         return int(match.group("row")), int(match.group("col"))
 
+    # Read metadata from the first slice to initialize the destination raster
     with rasterio.open(slice_files[0]) as src:
         tile_height = src.height
         tile_width = src.width
@@ -440,10 +453,12 @@ def stitch_geotiff_tiles(input_dir: str | Path, output_geotiff: str | Path) -> P
     full_height = 0
     full_width = 0
 
+    # First pass: Determine final raster dimensions and tile placements
     for path in slice_files:
         row_index, col_index = extract_indices(path)
         with rasterio.open(path) as src:
             tags = src.tags()
+            # Use tags if available (for exact alignment), otherwise fallback to grid-based offsets
             offset_x = int(tags.get("offset_x", col_index * tile_width))
             offset_y = int(tags.get("offset_y", row_index * tile_height))
             valid_height = int(tags.get("valid_height", src.height))
@@ -453,8 +468,10 @@ def stitch_geotiff_tiles(input_dir: str | Path, output_geotiff: str | Path) -> P
         full_width = max(full_width, offset_x + valid_width)
         full_height = max(full_height, offset_y + valid_height)
 
+    # Calculate global transform based on the top-left tile
     top_left_transform = min(tile_layouts, key=lambda item: (item[2], item[1]))[5]
 
+    # Second pass: Progressively write tiles into the destination using Rasterio windows
     with rasterio.open(
         output_geotiff,
         "w",
@@ -468,7 +485,9 @@ def stitch_geotiff_tiles(input_dir: str | Path, output_geotiff: str | Path) -> P
     ) as dst:
         for path, offset_x, offset_y, valid_width, valid_height, _ in tile_layouts:
             with rasterio.open(path) as src:
+                # Read valid pixel data from the slice
                 tile_data = src.read(window=Window(0, 0, valid_width, valid_height))
+            # Write directly to the corresponding window in the destination raster
             dst.write(tile_data, window=Window(offset_x, offset_y, valid_width, valid_height))
 
     return output_geotiff

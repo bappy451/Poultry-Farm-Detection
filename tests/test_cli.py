@@ -645,10 +645,10 @@ def test_train_mim_command_prints_training_summary(
             scheduler=None,
             grad_clip_norm=None,
             log_every: int = 10,
+            progress_callback=None,
         ):
             captured["trainer_precision"] = precision
             captured["trainer_device"] = str(device)
-
         def fit(self, epochs: int, output_dir: str | Path):
             return training.SSLTrainingSummary(
                 output_dir=str(output_dir),

@@ -154,6 +154,22 @@ def run_yolo_inference(
     device: str | None = None,
     progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> Path:
+    """
+    Runs sliding-window YOLO inference across a directory of GeoTIFFs.
+    
+    This implementation is highly memory-efficient. It uses Python generators 
+    to stream tiles from the GeoTIFFs lazily, ensuring that only a small batch 
+    of image data is in RAM at any given time. This allows the pipeline to 
+    process massive rasters (e.g., 50k x 50k pixels) on standard hardware.
+    
+    Args:
+        geotiff_dir: Directory containing input .tif files.
+        model_path: Path to the trained YOLO (.pt) model.
+        output_csv: Path to save the georeferenced detection records.
+        window_size: Size of the square sliding window in pixels.
+        stride: Stride of the sliding window.
+        batch_size: Number of tiles to process in a single GPU batch.
+    """
     try:
         import torch
     except ImportError as exc:
@@ -174,10 +190,18 @@ def run_yolo_inference(
     all_records: list[dict[str, Any]] = []
     geotiff_paths = find_geotiffs(geotiff_dir)
     for index, geotiff_path in enumerate(geotiff_paths, start=1):
+        # Create a lazy iterator for tiles (does not load data yet)
         tile_iterator = iter_slice_geotiff(geotiff_path, tile_size=window_size, stride=stride)
+        
+        # Process tiles in batches to maximize GPU utilization
         for batch_tiles in _iter_same_shape_batches(tile_iterator, batch_size):
+            # Normalize and convert each tile to PIL for the YOLO engine
             batch_images = [_normalize_tile_to_pil(tile.image_array) for tile in batch_tiles]
+            
+            # Execute model inference
             results = model(batch_images, device=device, batch=len(batch_tiles), verbose=False)
+            
+            # Post-process results and project back to GIS coordinates
             for tile, result in zip(batch_tiles, results):
                 result = _apply_confidence_threshold(result, confidence_threshold)
                 all_records.extend(
@@ -191,5 +215,6 @@ def run_yolo_inference(
         if progress_callback is not None:
             progress_callback(index, len(geotiff_paths), geotiff_path.name)
 
+    # Save all detection records to CSV
     pd.DataFrame(all_records).to_csv(output_csv, index=False)
     return output_csv

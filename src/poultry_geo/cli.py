@@ -1227,6 +1227,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "train-spark":
+            import os
+            import torch
             import poultry_geo.naip_data as naip_data
             import poultry_geo.spark as spark
             import poultry_geo.spark_models as spark_models

@@ -429,7 +429,15 @@ class LoRALinear(nn.Module):
 
 
 class BandAdapter(nn.Module):
-    """Project heterogeneous sensor bands into a three-channel RGB-like space."""
+    """
+    Projects heterogeneous sensor bands (e.g., NAIP 4-band, Sentinel-2 12-band) 
+    into a three-channel RGB-like space.
+    
+    Remote sensing imagery often contains spectral bands beyond Red, Green, and 
+    Blue (like Near-Infrared). This module uses a learnable 1x1 convolution to 
+    'project' these extra bands into a 3-channel representation that standard 
+    computer vision models can process.
+    """
 
     def __init__(
         self,
@@ -439,6 +447,13 @@ class BandAdapter(nn.Module):
         precision: str = "fp32",
         bypass_rgb: bool = True,
     ) -> None:
+        """
+        Args:
+            in_channels: Number of spectral bands in the source imagery.
+            out_channels: Target number of channels (default: 3).
+            precision: Computation precision (fp32, fp16, bf16).
+            bypass_rgb: If True and in/out channels are both 3, skips projection.
+        """
         super().__init__()
         if in_channels <= 0:
             raise ValueError("in_channels must be a positive integer.")
@@ -451,11 +466,18 @@ class BandAdapter(nn.Module):
         self.requested_precision = _validate_precision(precision)
         self.resolved_precision = "bf16" if self.requested_precision == "nf4" else self.requested_precision
 
+        # Learnable 1x1 convolution for spectral dimensionality reduction
         self.proj: nn.Conv2d | None = None
         if not (self.bypass_rgb and in_channels == out_channels == 3):
             self.proj = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=True)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            inputs: Multi-band image tensor [B, C, H, W]
+        Returns:
+            Projected 3-channel tensor [B, out_channels, H, W]
+        """
         if inputs.ndim != 4:
             raise ValueError("BandAdapter expects inputs with shape [B, C, H, W].")
         if inputs.shape[1] != self.in_channels:
@@ -467,6 +489,8 @@ class BandAdapter(nn.Module):
             return inputs.to(dtype=_output_dtype(self.resolved_precision))
 
         compute_dtype = _runtime_compute_dtype(inputs.device, self.resolved_precision)
+        
+        # Apply the learned 1x1 linear projection across spectral bands
         outputs = F.conv2d(
             inputs.to(dtype=compute_dtype),
             self.proj.weight.to(device=inputs.device, dtype=compute_dtype),
@@ -476,7 +500,13 @@ class BandAdapter(nn.Module):
 
 
 class RemoteSensingViT(nn.Module):
-    """Compact ViT backbone for remote-sensing self-supervised pretraining."""
+    """
+    Compact Vision Transformer (ViT) backbone optimized for remote-sensing SSL.
+    
+    This backbone follows the standard ViT architecture (Patch Embedding, 
+    Transformer Blocks, and optional [CLS] token) but is designed to be 
+    efficient for high-resolution satellite/aerial imagery.
+    """
 
     def __init__(
         self,
@@ -493,6 +523,18 @@ class RemoteSensingViT(nn.Module):
         drop_rate: float = 0.0,
         attn_drop_rate: float = 0.0,
     ) -> None:
+        """
+        Args:
+            image_size: Resolution of input images.
+            patch_size: Resolution of each patch.
+            embed_dim: Latent vector dimension.
+            depth: Number of transformer layers.
+            num_heads: Number of attention heads.
+            mlp_ratio: Expansion factor in MLP layers.
+            precision: Computation precision (fp32, fp16, bf16, nf4).
+            quantization_config: Configuration for 4-bit loading (QLoRA style).
+            gradient_checkpointing: If True, saves memory during backprop.
+        """
         super().__init__()
         if embed_dim <= 0:
             raise ValueError("embed_dim must be a positive integer.")
@@ -759,6 +801,13 @@ class SegmentationHead(DecoderHead):
 
 
 class RemoteSensingSegmentationModel(nn.Module):
+    """
+    A ViT-based semantic segmentation model for remote sensing (e.g., roof masking).
+    
+    This model combines the pre-trained ViT backbone with a Convolutional 
+    decoder head. It supports Parameter-Efficient Fine-Tuning (PEFT) via LoRA 
+    and can process multi-band imagery through its BandAdapter.
+    """
     def __init__(
         self,
         *,
@@ -780,6 +829,18 @@ class RemoteSensingSegmentationModel(nn.Module):
         drop_rate: float = 0.0,
         attn_drop_rate: float = 0.0,
     ) -> None:
+        """
+        Args:
+            in_channels: Number of bands in the input.
+            image_size: Resolution of input images.
+            patch_size: Resolution of patches.
+            embed_dim: Latent vector dimension.
+            depth: Number of transformer layers.
+            num_heads: Number of attention heads.
+            precision: Computation precision.
+            use_lora: If True, injects LoRA layers into the backbone.
+            freeze_backbone: If True, freezes the transformer weights.
+        """
         super().__init__()
         self.requested_precision = _validate_precision(precision)
         self.use_lora = use_lora
@@ -787,7 +848,10 @@ class RemoteSensingSegmentationModel(nn.Module):
         self.image_size = _pair(image_size)
         self.patch_size = _pair(patch_size)
 
+        # Spectral projection
         self.adapter = BandAdapter(in_channels=in_channels, out_channels=3, precision=precision)
+        
+        # Core transformer backbone
         self.backbone = RemoteSensingViT(
             image_size=self.image_size,
             patch_size=self.patch_size,
@@ -841,6 +905,14 @@ class RemoteSensingSegmentationModel(nn.Module):
 
 
 class RemoteSensingMIMModel(nn.Module):
+    """
+    Implements a Masked Image Modeling (MIM) objective for self-supervised pretraining.
+    
+    This model hides random patches of the input image and trains the ViT backbone 
+    and a lightweight decoder to reconstruct the missing pixels. This forces the 
+    model to learn high-level semantic and spatial features without requiring 
+    labeled data.
+    """
     def __init__(
         self,
         *,
@@ -863,6 +935,17 @@ class RemoteSensingMIMModel(nn.Module):
         attn_drop_rate: float = 0.0,
         quantization_config: Any | None = None,
     ) -> None:
+        """
+        Args:
+            in_channels: Number of bands in the input.
+            image_size: Resolution of input images.
+            patch_size: Resolution of masking patches.
+            embed_dim: Latent vector dimension.
+            depth: Number of transformer layers.
+            num_heads: Number of attention heads.
+            precision: Computation precision (fp32, fp16, bf16, nf4).
+            mask_ratio: Fraction of patches to hide (default: 0.75).
+        """
         super().__init__()
         if not 0.0 < mask_ratio < 1.0:
             raise ValueError("mask_ratio must be between 0 and 1.")
@@ -878,7 +961,10 @@ class RemoteSensingMIMModel(nn.Module):
         self.use_lora = bool(use_lora or self.requested_precision == "nf4")
         self.freeze_backbone = bool(freeze_backbone or self.requested_precision == "nf4")
 
+        # Spectral projection layer
         self.adapter = BandAdapter(in_channels=in_channels, out_channels=3, precision=precision)
+        
+        # Core transformer backbone
         self.backbone = RemoteSensingViT(
             image_size=self.image_size,
             patch_size=self.patch_size,

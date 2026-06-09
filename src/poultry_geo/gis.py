@@ -283,26 +283,51 @@ def identify_poultry_farms_from_shapefile(
     min_samples: int = 2,
     target_crs: str = "EPSG:26916",
 ) -> Path:
+    """
+    Identifies active poultry farms by clustering individual house detections.
+    
+    This function uses the DBSCAN (Density-Based Spatial Clustering of 
+    Applications with Noise) algorithm to group detections that are within 
+    a specific proximity of each other. Individual houses that do not meet 
+    the minimum cluster size (min_samples) are treated as noise/outliers.
+    
+    Args:
+        shapefile_path: Input shapefile containing poultry house polygons.
+        output_path: Destination path for the farm centroid shapefile (EPSG:4326).
+        proximity_m: Maximum distance (meters) between houses in the same farm.
+        min_samples: Minimum number of houses to constitute a 'farm'.
+    """
     from sklearn.cluster import DBSCAN
 
+    # 1. Read source vector data and project to a metric CRS for accurate distance calculation
     df, crs = _read_vector_rows(shapefile_path)
     projected_df, projected_crs = _ensure_projected(df, crs, target_crs=target_crs)
     if projected_df.empty:
         return _write_features(Path(output_path), "Point", "EPSG:4326", [])
 
+    # 2. Extract centroids for clustering
     centroids = projected_df["geometry"].apply(lambda geom: geom.centroid)
     coords = np.array([[point.x, point.y] for point in centroids], dtype=float)
+    
+    # 3. Execute DBSCAN clustering
+    # eps is the maximum distance between two samples for one to be considered as in the neighborhood of the other.
     labels = DBSCAN(eps=proximity_m, min_samples=min_samples, metric="euclidean").fit(coords).labels_
     projected_df["farm_id"] = labels
+    
+    # Filter out noise (-1)
     grouped = projected_df[projected_df["farm_id"] != -1].copy()
     if grouped.empty:
         return _write_features(Path(output_path), "Point", "EPSG:4326", [])
 
+    # 4. Compute farm-level metrics and centroids
     transformer = pyproj.Transformer.from_crs(projected_crs, "EPSG:4326", always_xy=True)
     rows: list[dict[str, Any]] = []
     for farm_id, farm_df in grouped.groupby("farm_id"):
+        # Mean center of all houses in the farm
         center_x = float(farm_df["geometry"].apply(lambda geom: geom.centroid.x).mean())
         center_y = float(farm_df["geometry"].apply(lambda geom: geom.centroid.y).mean())
+        
+        # Project back to geographic coordinates (WGS84) for easy visualization
         longitude, latitude = transformer.transform(center_x, center_y)
         rows.append(
             {
@@ -314,6 +339,7 @@ def identify_poultry_farms_from_shapefile(
             }
         )
 
+    # 5. Write the resulting farm centroids to a new shapefile
     return _write_features(Path(output_path), "Point", "EPSG:4326", rows)
 
 
