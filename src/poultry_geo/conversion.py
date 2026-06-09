@@ -23,16 +23,18 @@ from poultry_geo.geotiff import DEFAULT_JPEG_QUALITY, find_geotiffs
 def _normalize_rgb(image: np.ndarray, out_dtype: np.dtype = np.uint8) -> np.ndarray:
     rgb = np.moveaxis(_ensure_three_channels(image), 0, -1)
     if rgb.dtype == out_dtype:
-        return rgb
+        return np.ascontiguousarray(rgb)
     rgb = rgb.astype(np.float32)
     rgb_min = float(rgb.min())
     rgb_max = float(rgb.max())
     if np.isclose(rgb_min, rgb_max):
-        return np.zeros_like(rgb, dtype=out_dtype)
+        return np.ascontiguousarray(np.zeros_like(rgb, dtype=out_dtype))
     scaled = (rgb - rgb_min) / (rgb_max - rgb_min)
     if np.issubdtype(out_dtype, np.integer):
-        return np.clip(scaled * np.iinfo(out_dtype).max, 0, np.iinfo(out_dtype).max).astype(out_dtype)
-    return scaled.astype(out_dtype)
+        return np.ascontiguousarray(
+            np.clip(scaled * np.iinfo(out_dtype).max, 0, np.iinfo(out_dtype).max).astype(out_dtype)
+        )
+    return np.ascontiguousarray(scaled.astype(out_dtype))
 
 
 def _ensure_three_channels(image: np.ndarray) -> np.ndarray:

@@ -55,8 +55,10 @@ names:
   Windows launchers for the full CLI with append-only logging.
 - `scripts/slice_tiles.sh`
   Bash wrapper for slicing one GeoTIFF or a directory of GeoTIFFs into `tif`, `png`, or `jpg` tiles.
-- `scripts/slice_tiles.ps1` and `scripts/slice_tiles.cmd`
-  Windows launchers for the common slicing workflow with append-only logging.
+- `scripts/train_mim.*`
+  Wrappers for running self-supervised MAE pretraining on NAIP imagery.
+- `scripts/train_segmentation.*`
+  Wrappers for running stateful grid-search segmentation training (fine-tuning).
 - `configs/pipeline.example.json`
   Example config for `run-pipeline`.
 - `tests/`
@@ -222,6 +224,62 @@ are selected automatically after `torch.distributed` is initialized.
 
 Input precision may be `fp32`, `fp16`, or `bf16`. NF4 is model-weight
 quantization and is intentionally not used as an image tensor dtype.
+
+## Grid-Search Segmentation Fine-Tuning
+
+The project provides a stateful, grid-search training workflow to fine-tune custom foundational backbones (like ResNet50 and the full span of `timm` Vision Transformers: Tiny, Small, Base, and Large) into binary roof-mask segmenters.
+
+This workflow automatically discovers required `timm` attributes, injects LoRA bottleneck layers if requested, and scales the inputs seamlessly. By default, it automatically downloads and starts from ImageNet pre-trained weights.
+
+**Configuration:**
+The grid search is controlled via a `config.yaml` file. You define your data paths (raw images and `.png` masks) and list the hyperparameter permutations to test:
+
+```yaml
+data:
+  image_dir: ./tmp/segmentation/images
+  mask_dir: ./tmp/segmentation/masks
+  image_size: 256
+  n_channels: 3
+  batch_size: 8
+  num_workers: 4
+
+runtime:
+  device: auto
+  seed: 27
+  output_dir: ./runs/grid-search
+  pretrained: true
+
+grid_search:
+  backbone:
+    - resnet50
+    - vit_base_patch16_224
+  optimizer:
+    - adamw
+  precision:
+    - fp32
+    - bf16
+  learning_rate:
+    - 0.0001
+  weight_decay:
+    - 0.0001
+  freeze_backbone:
+    - false
+  use_lora:
+    - false
+```
+
+**Execution:**
+Use the wrapper scripts to run the campaign. The script is stateful; if interrupted, running the exact same command resumes the grid search where it left off.
+
+macOS/Linux:
+```bash
+./scripts/train_segmentation.sh --training-name my-grid-search --config config.yaml --epochs 100
+```
+
+Windows:
+```powershell
+.\scripts\train_segmentation.cmd --training-name my-grid-search --config config.yaml --epochs 100
+```
 
 ## Inspect SSL Backbone
 
@@ -463,7 +521,7 @@ Main commands:
 .venv/bin/python -m poultry_geo train-yolo data.yaml runs/poultry --models rtdetr-l.pt --family rtdetr
 .venv/bin/python -m poultry_geo train-detr train/images train/_annotations.coco.json runs/detr
 .venv/bin/python -m poultry_geo train-mask2former train/images train/_annotations.coco.json runs/mask2former
-.venv/bin/python -m poultry_geo updated-train segmentation-demo --config config.yaml --epochs 2 --root-dir trained_models
+./scripts/train_segmentation.sh --training-name segmentation-demo --config config.yaml --epochs 100
 .venv/bin/python -m poultry_geo export-model weights/best.pt --format torchscript
 
 # County analytics

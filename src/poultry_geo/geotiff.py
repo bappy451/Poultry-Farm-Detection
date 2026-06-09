@@ -77,14 +77,14 @@ def iter_tile_windows(
 def _normalize_rgb(image_array: np.ndarray) -> np.ndarray:
     rgb = np.moveaxis(_ensure_three_channels(image_array), 0, -1)
     if rgb.dtype == np.uint8:
-        return rgb
+        return np.ascontiguousarray(rgb)
     rgb = rgb.astype(np.float32)
     rgb_min = float(rgb.min())
     rgb_max = float(rgb.max())
     if math.isclose(rgb_min, rgb_max):
         return np.zeros_like(rgb, dtype=np.uint8)
     scaled = (rgb - rgb_min) / (rgb_max - rgb_min)
-    return np.clip(scaled * 255.0, 0, 255).astype(np.uint8)
+    return np.ascontiguousarray(np.clip(scaled * 255.0, 0, 255).astype(np.uint8))
 
 
 def _ensure_three_channels(image_array: np.ndarray) -> np.ndarray:
@@ -126,15 +126,14 @@ def _write_image_tile(
     image.save(output_path, format="PNG", optimize=True)
 
 
-def slice_geotiff_to_memory(
+def iter_slice_geotiff(
     geotiff_path: str | Path,
     tile_size: int,
     stride: int | None = None,
-) -> list[TileSlice]:
-    """Read a GeoTIFF into edge-snapped windows without zero padding."""
+) -> Iterator[TileSlice]:
+    """Yield edge-snapped windows from a GeoTIFF without zero padding."""
     stride = _resolve_stride(tile_size, stride)
     geotiff_path = Path(geotiff_path)
-    tiles: list[TileSlice] = []
 
     with rasterio.open(geotiff_path) as src:
         transform = src.transform
@@ -153,21 +152,26 @@ def slice_geotiff_to_memory(
                 transform.a,
                 -transform.e,
             )
-            tiles.append(
-                TileSlice(
-                    image_array=image_array,
-                    transform=new_transform,
-                    crs=src.crs,
-                    dtype=src.dtypes[0],
-                    count=src.count,
-                    position=(row_index, col_index),
-                    offset_xy=(x_start, y_start),
-                    valid_shape=valid_shape,
-                    source_path=geotiff_path,
-                )
+            yield TileSlice(
+                image_array=image_array,
+                transform=new_transform,
+                crs=src.crs,
+                dtype=src.dtypes[0],
+                count=src.count,
+                position=(row_index, col_index),
+                offset_xy=(x_start, y_start),
+                valid_shape=valid_shape,
+                source_path=geotiff_path,
             )
 
-    return tiles
+
+def slice_geotiff_to_memory(
+    geotiff_path: str | Path,
+    tile_size: int,
+    stride: int | None = None,
+) -> list[TileSlice]:
+    """Read a GeoTIFF into edge-snapped windows without zero padding."""
+    return list(iter_slice_geotiff(geotiff_path, tile_size, stride))
 
 
 def slice_geotiff_to_files(
@@ -181,11 +185,10 @@ def slice_geotiff_to_files(
 ) -> list[Path]:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    tiles = slice_geotiff_to_memory(geotiff_path, tile_size=tile_size, stride=stride)
     written_paths: list[Path] = []
     resolved_output_format = _resolve_output_format(output_format, to_jpeg)
 
-    for tile in tiles:
+    for tile in iter_slice_geotiff(geotiff_path, tile_size=tile_size, stride=stride):
         row_index, col_index = tile.position
         if resolved_output_format == "tif":
             output_path = output_dir / f"slice_{row_index}_{col_index}.tif"

@@ -51,6 +51,7 @@ class SSLTrainer:
         scheduler=None,
         grad_clip_norm: float | None = None,
         log_every: int = 10,
+        progress_callback: Any | None = None,
     ) -> None:
         import torch
 
@@ -62,6 +63,7 @@ class SSLTrainer:
         self.grad_clip_norm = grad_clip_norm
         self.log_every = max(1, int(log_every))
         self.requested_precision = precision
+        self.progress_callback = progress_callback
         self.device = torch.device(device) if device is not None else torch.device(select_torch_device())
         self.model = self.model.to(self.device)
         self.grad_scaler = torch.amp.GradScaler(
@@ -123,18 +125,26 @@ class SSLTrainer:
 
         return {"loss": float(loss.detach().cpu())}
 
-    def train_epoch(self, epoch_index: int) -> dict[str, float]:
+    def train_epoch(self, epoch_index: int, total_epochs: int = 1) -> dict[str, float]:
         sampler = getattr(self.train_loader, "sampler", None)
         if sampler is not None and hasattr(sampler, "set_epoch"):
             sampler.set_epoch(epoch_index)
 
         losses: list[float] = []
+        num_batches = len(self.train_loader)
         for step_index, batch in enumerate(self.train_loader, start=1):
             metrics = self.train_step(batch)
             losses.append(metrics["loss"])
+            
+            if self.progress_callback is not None:
+                total_work = total_epochs * num_batches
+                completed_work = (epoch_index * num_batches) + step_index
+                detail = f"ep {epoch_index+1}/{total_epochs} batch {step_index}/{num_batches} loss={metrics['loss']:.4f}"
+                self.progress_callback(completed_work, total_work, detail)
+
             if step_index % self.log_every == 0:
                 print(
-                    f"train-mim epoch={epoch_index + 1} step={step_index}/{len(self.train_loader)} "
+                    f"train-mim epoch={epoch_index + 1} step={step_index}/{num_batches} "
                     f"loss={metrics['loss']:.6f}"
                 )
 
@@ -171,9 +181,10 @@ class SSLTrainer:
         best_metric = float("inf")
         final_train_loss: float | None = None
         final_val_loss: float | None = None
+        total_epochs = int(epochs)
 
-        for epoch_index in range(int(epochs)):
-            train_metrics = self.train_epoch(epoch_index)
+        for epoch_index in range(total_epochs):
+            train_metrics = self.train_epoch(epoch_index, total_epochs=total_epochs)
             val_metrics = self.evaluate(epoch_index) if self.val_loader is not None else {"loss": None, "batches": 0}
             final_train_loss = train_metrics["loss"]
             final_val_loss = val_metrics["loss"]
@@ -211,7 +222,7 @@ class SSLTrainer:
                     "summary": asdict(
                         SSLTrainingSummary(
                             output_dir=str(output_dir),
-                            epochs=int(epochs),
+                            epochs=total_epochs,
                             train_batches=len(self.train_loader),
                             val_batches=0 if self.val_loader is None else len(self.val_loader),
                             final_train_loss=final_train_loss,
@@ -225,7 +236,7 @@ class SSLTrainer:
         )
         return SSLTrainingSummary(
             output_dir=str(output_dir),
-            epochs=int(epochs),
+            epochs=total_epochs,
             train_batches=len(self.train_loader),
             val_batches=0 if self.val_loader is None else len(self.val_loader),
             final_train_loss=final_train_loss,

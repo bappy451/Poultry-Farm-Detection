@@ -696,6 +696,16 @@ def build_parser() -> argparse.ArgumentParser:
     updated_train_parser.add_argument("--epochs", type=int, default=None, help="Override runtime.epochs from the config.")
     updated_train_parser.add_argument("--root-dir", default="trained_models", help="Root directory for saved runs.")
 
+    ssl_grid_parser = _add_command_parser(
+        subparsers,
+        "ssl-grid-train",
+        help_text="Run stateful resume-aware SSL (MIM) grid search training.",
+    )
+    ssl_grid_parser.add_argument("training_name", help="Run identifier.")
+    ssl_grid_parser.add_argument("--config", default="ssl_config.yaml", help="Path to the SSL grid-search YAML config.")
+    ssl_grid_parser.add_argument("--epochs", type=int, default=None, help="Override runtime.epochs from the config.")
+    ssl_grid_parser.add_argument("--root-dir", default="trained_models", help="Root directory for saved runs.")
+
     return parser
 
 
@@ -1157,6 +1167,7 @@ def main(argv: list[str] | None = None) -> int:
                 val_loader=val_loader,
                 device=device,
                 precision=args.precision,
+                progress_callback=progress_callback,
             )
             summary = trainer.fit(args.epochs, args.output_dir)
             print(
@@ -1343,6 +1354,19 @@ def main(argv: list[str] | None = None) -> int:
                 training_name=args.training_name,
                 epochs=args.epochs,
                 root_dir=args.root_dir,
+                progress_callback=progress_callback,
+            )
+            print(results.to_string(index=False))
+            return 0
+
+        if args.command == "ssl-grid-train":
+            from poultry_geo.ssl_grid_search import run_stateful_ssl_grid_search
+            results = run_stateful_ssl_grid_search(
+                config_path=args.config,
+                training_name=args.training_name,
+                epochs=args.epochs,
+                root_dir=args.root_dir,
+                progress_callback=progress_callback,
             )
             print(results.to_string(index=False))
             return 0

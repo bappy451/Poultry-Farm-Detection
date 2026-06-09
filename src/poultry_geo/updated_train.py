@@ -28,6 +28,7 @@ def run_stateful_grid_search(
     *,
     epochs: int | None = None,
     root_dir: str | Path = "trained_models",
+    progress_callback: Any | None = None,
 ) -> pd.DataFrame:
     config = load_grid_search_config(config_path)
     experiments = expand_grid_search_configs(config)
@@ -41,7 +42,7 @@ def run_stateful_grid_search(
     campaign_dir.mkdir(parents=True, exist_ok=True)
 
     records: list[dict[str, Any]] = []
-    for experiment in experiments:
+    for experiment_index, experiment in enumerate(experiments):
         grid = experiment["grid"]
         experiment_id = _build_experiment_id(experiment)
         record = {
@@ -105,6 +106,10 @@ def run_stateful_grid_search(
             run_state = manager.prepare(model, optimizer, scaler)
             criterion = torch.nn.BCEWithLogitsLoss()
 
+            print(f"\n--- Starting Experiment: {experiment_id} ---")
+            print(f"Parameters: backbone={grid['backbone']}, lr={grid['learning_rate']}, use_lora={grid['use_lora']}")
+            print(f"Directory: {manager.run_dir}")
+
             for epoch_index in range(run_state.start_epoch, total_epochs):
                 metrics = _train_one_epoch(
                     model,
@@ -115,6 +120,10 @@ def run_stateful_grid_search(
                     precision=precision,
                     scaler=scaler,
                     epoch_index=epoch_index,
+                    progress_callback=progress_callback,
+                    experiment_index=experiment_index,
+                    total_experiments=len(experiments),
+                    total_epochs=total_epochs,
                 )
                 manager.append_metrics(
                     epoch=epoch_index + 1,
@@ -123,6 +132,7 @@ def run_stateful_grid_search(
                     evaluation_matrix=metrics["evaluation_matrix"],
                 )
                 manager.save_checkpoint(model, optimizer, scaler, epoch=epoch_index)
+                print(f"  Epoch {epoch_index + 1}/{total_epochs} - Loss: {metrics['loss']:.6f} - Acc: {metrics['accuracy']:.4f}")
 
             metrics_frame = pd.read_csv(manager.metrics_path)
             record["status"] = "ok"
@@ -152,6 +162,10 @@ def _train_one_epoch(
     precision: str,
     scaler,
     epoch_index: int,
+    progress_callback: Any | None = None,
+    experiment_index: int = 0,
+    total_experiments: int = 1,
+    total_epochs: int = 1,
 ) -> dict[str, Any]:
     sampler = getattr(loader, "sampler", None)
     if sampler is not None and hasattr(sampler, "set_epoch"):
@@ -163,8 +177,9 @@ def _train_one_epoch(
     correct_pixels = 0
     total_pixels = 0
     tn = fp = fn = tp = 0
+    num_batches = len(loader)
 
-    for batch in loader:
+    for batch_index, batch in enumerate(loader, start=1):
         images = batch["image"].to(device=device, non_blocking=True)
         masks = batch["mask"].to(device=device, non_blocking=True)
         optimizer.zero_grad(set_to_none=True)
@@ -185,7 +200,8 @@ def _train_one_epoch(
             _sanitize_gradients(model.parameters())
             optimizer.step()
 
-        total_loss += float(loss.detach().cpu())
+        current_loss = float(loss.detach().cpu())
+        total_loss += current_loss
         total_batches += 1
         predictions = torch.sigmoid(logits) >= 0.5
         targets = masks >= 0.5
@@ -195,6 +211,16 @@ def _train_one_epoch(
         fp += int((predictions & ~targets).sum().item())
         fn += int((~predictions & targets).sum().item())
         tp += int((predictions & targets).sum().item())
+
+        if progress_callback is not None:
+            total_work = total_experiments * total_epochs * num_batches
+            completed_work = (experiment_index * total_epochs * num_batches) + \
+                             (epoch_index * num_batches) + batch_index
+            detail = f"exp {experiment_index+1}/{total_experiments} ep {epoch_index+1}/{total_epochs} batch {batch_index}/{num_batches} loss={current_loss:.4f}"
+            progress_callback(completed_work, total_work, detail)
+        
+        if batch_index % 10 == 0:
+            print(f"    batch {batch_index}/{num_batches} - Loss: {current_loss:.6f}")
 
     return {
         "loss": total_loss / max(total_batches, 1),

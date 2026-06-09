@@ -1,5 +1,5 @@
 data:
-  image_dir: ./tmp/segmentation/images
+  image_dir: C:\Users\mza0288\Documents\Poultry-Farm-Detection\tmp\test_jpg
   mask_dir: ./tmp/segmentation/masks
   image_size: 256
   n_channels: 3
@@ -10,12 +10,15 @@ runtime:
   device: auto
   seed: 27
   output_dir: ./runs/grid-search
-  pretrained: false
+  pretrained: true
 
 grid_search:
   backbone:
     - resnet50
     - vit_tiny_patch16_224
+    - vit_small_patch16_224
+    - vit_base_patch16_224
+    - vit_large_patch16_224
   optimizer:
     - adamw
     - adan
@@ -32,3 +35,13 @@ grid_search:
   use_lora:
     - false
     - true
+  embed_dim:
+    - 192   # Tiny
+    - 384   # Small
+  depth:
+    - 8     # Tiny
+    - 12    # Small
+  num_heads:
+    - 6
+  mask_ratio:
+    - 0.75

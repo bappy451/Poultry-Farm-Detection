@@ -44,7 +44,7 @@ def _pair(value: int | tuple[int, int]) -> tuple[int, int]:
     return (int(value), int(value))
 
 
-def _build_resnet50_backbone(pretrained: bool = False) -> tuple[nn.Module, int]:
+def _build_resnet50_backbone(pretrained: bool = True) -> tuple[nn.Module, int]:
     from torchvision.models import ResNet50_Weights, resnet50
 
     weights = ResNet50_Weights.DEFAULT if pretrained else None
@@ -66,7 +66,7 @@ def _build_timm_vit_backbone(
     backbone_name: str,
     *,
     image_size: int | tuple[int, int],
-    pretrained: bool = False,
+    pretrained: bool = True,
 ) -> tuple[nn.Module, int]:
     try:
         import timm
@@ -164,7 +164,7 @@ class UnifiedRSModel(nn.Module):
         backbone_name: str,
         image_size: int | tuple[int, int],
         precision: str = "fp32",
-        pretrained: bool = False,
+        pretrained: bool = True,
         freeze_backbone: bool = False,
         use_lora: bool = False,
         lora_rank: int = 4,
