@@ -154,10 +154,11 @@ class SparseCSPDarkNetEncoder(nn.Module):
     """
     def __init__(self, in_channels=3, base_channels=64):
         super().__init__()
+        # YOLOv8/v11 stem uses stride=2 to halve spatial resolution immediately
         if spconv is not None:
-            self.stem = spconv.SparseConv2d(in_channels, base_channels // 2, kernel_size=3, stride=1, padding=1)
+            self.stem = spconv.SparseConv2d(in_channels, base_channels // 2, kernel_size=3, stride=2, padding=1)
         else:
-            self.stem = nn.Conv2d(in_channels, base_channels // 2, kernel_size=3, stride=1, padding=1)
+            self.stem = nn.Conv2d(in_channels, base_channels // 2, kernel_size=3, stride=2, padding=1)
         
         def make_stage(in_c, out_c, stride=2):
             if spconv is not None:
