@@ -543,6 +543,38 @@ def build_parser() -> argparse.ArgumentParser:
     train_mim_parser.add_argument("--lora-alpha", type=float, default=8.0)
     train_mim_parser.add_argument("--lora-dropout", type=float, default=0.0)
 
+    train_spark_parser = _add_command_parser(
+        subparsers,
+        "train-spark",
+        help_text="Train a Sparse Masked Modeling (SparK) SSL run on NAIP tiles.",
+        description=dedent(
+            """
+            Train a SparK-style masked image modeling objective using a sparse hierarchical 
+            encoder (ResNet50 or CSPDarkNet) and a dense hierarchical decoder.
+            """
+        ).strip(),
+        epilog=dedent(
+            """
+            Examples:
+              poultry-geo train-spark tmp/test_jpg runs/spark --batch-size 4 --backbone-type resnet50 --precision bf16
+              poultry-geo train-spark tmp/test_jpg runs/spark-csp --batch-size 4 --backbone-type cspdarknet --mask-ratio 0.75
+            """
+        ).strip(),
+    )
+    train_spark_parser.add_argument("data_root")
+    train_spark_parser.add_argument("output_dir")
+    train_spark_parser.add_argument("--batch-size", type=int, default=4)
+    train_spark_parser.add_argument("--crop-size", type=int, default=224)
+    train_spark_parser.add_argument("--channels", type=int, default=None)
+    train_spark_parser.add_argument("--precision", default="fp32", choices=["fp32", "fp16", "bf16"])
+    train_spark_parser.add_argument("--backbone-type", default="resnet50", choices=["resnet50", "cspdarknet", "yolo11l", "yolov26l"])
+    train_spark_parser.add_argument("--mask-ratio", type=float, default=0.65)
+    train_spark_parser.add_argument("--patch-size", type=int, default=16)
+    train_spark_parser.add_argument("--num-workers", type=int, default=4)
+    train_spark_parser.add_argument("--epochs", type=int, default=1)
+    train_spark_parser.add_argument("--learning-rate", type=float, default=1e-3)
+    train_spark_parser.add_argument("--device", default=None, help="Execution device, for example cpu, gpu, cuda:0, or mps.")
+
     train_parser = _add_command_parser(subparsers, "train-yolo", help_text="Train one or more Ultralytics YOLO models.")
     train_parser.add_argument("data_path")
     train_parser.add_argument("project_dir")
@@ -705,6 +737,16 @@ def build_parser() -> argparse.ArgumentParser:
     ssl_grid_parser.add_argument("--config", default="ssl_config.yaml", help="Path to the SSL grid-search YAML config.")
     ssl_grid_parser.add_argument("--epochs", type=int, default=None, help="Override runtime.epochs from the config.")
     ssl_grid_parser.add_argument("--root-dir", default="trained_models", help="Root directory for saved runs.")
+
+    spark_grid_parser = _add_command_parser(
+        subparsers,
+        "spark-grid-train",
+        help_text="Run stateful resume-aware SparK (SSL) grid search training.",
+    )
+    spark_grid_parser.add_argument("training_name", help="Run identifier.")
+    spark_grid_parser.add_argument("--config", default="configs/spark_grid_search.yaml", help="Path to the SparK grid-search YAML config.")
+    spark_grid_parser.add_argument("--epochs", type=int, default=None, help="Override runtime.epochs from the config.")
+    spark_grid_parser.add_argument("--root-dir", default="trained_models", help="Root directory for saved runs.")
 
     return parser
 
@@ -1184,6 +1226,69 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
 
+        if args.command == "train-spark":
+            import poultry_geo.naip_data as naip_data
+            import poultry_geo.spark as spark
+            import poultry_geo.spark_models as spark_models
+            import poultry_geo.train_spark_ssl as train_spark_ssl
+            import poultry_geo.models as models
+
+            device = _resolve_torch_device_alias(args.device)
+            train_loader, val_loader = naip_data.get_dataloaders(
+                args.data_root,
+                batch_size=args.batch_size,
+                crop_size=args.crop_size,
+                channels=args.channels,
+                precision=_resolve_data_precision(args.precision),
+                num_workers=args.num_workers,
+            )
+
+            # Build model
+            in_channels = args.channels or getattr(getattr(train_loader, "dataset", None), "_expected_channels", 3)
+            adapter = models.BandAdapter(in_channels=in_channels, out_channels=3)
+            transformer = spark.SparseTransformer(
+                adapter=adapter, 
+                patch_size=args.patch_size, 
+                mask_ratio=args.mask_ratio
+            )
+            model = spark_models.SparKNetwork(
+                backbone_type=args.backbone_type, 
+                in_channels=3
+            ).to(device)
+
+            optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
+            scaler = torch.cuda.amp.GradScaler(enabled=(args.precision != "fp32"))
+            config = train_spark_ssl.SparKConfig(
+                mask_ratio=args.mask_ratio,
+                backbone_type=args.backbone_type,
+                precision=args.precision.upper(),
+                lr=args.learning_rate,
+                batch_size=args.batch_size
+            )
+
+            print(f"Starting SparK training on {device}...")
+            os.makedirs(args.output_dir, exist_ok=True)
+            
+            for epoch in range(args.epochs):
+                model.train()
+                epoch_loss = 0
+                for i, batch in enumerate(train_loader):
+                    img = batch["image"].to(device)
+                    loss = train_spark_ssl.train_one_step(
+                        model, optimizer, scaler, transformer, img, config
+                    )
+                    epoch_loss += loss
+                    if i % 10 == 0:
+                        print(f"Epoch {epoch} | Batch {i} | Loss: {loss:.4f}")
+                
+                avg_loss = epoch_loss / len(train_loader)
+                print(f"Epoch {epoch} complete. Avg Loss: {avg_loss:.4f}")
+                
+                # Save checkpoints
+                train_spark_ssl.save_spark_checkpoint(model, config, args.output_dir, epoch)
+
+            return 0
+
         if args.command == "train-yolo":
             runs = train_yolo_models(
                 models=args.models,
@@ -1362,6 +1467,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "ssl-grid-train":
             from poultry_geo.ssl_grid_search import run_stateful_ssl_grid_search
             results = run_stateful_ssl_grid_search(
+                config_path=args.config,
+                training_name=args.training_name,
+                epochs=args.epochs,
+                root_dir=args.root_dir,
+                progress_callback=progress_callback,
+            )
+            print(results.to_string(index=False))
+            return 0
+
+        if args.command == "spark-grid-train":
+            from poultry_geo.spark_grid_search import run_stateful_spark_grid_search
+            results = run_stateful_spark_grid_search(
                 config_path=args.config,
                 training_name=args.training_name,
                 epochs=args.epochs,

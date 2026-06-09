@@ -1,608 +1,192 @@
 # Poultry Farm Geospatial Detection Pipeline
 
-This directory now packages the notebook workflow as a structured Python project: GeoTIFF slicing, YOLO inference, georeferenced CSV generation, duplicate suppression, rectangle and mask merging, farm clustering, GIS export, shapefile conversion, KML export, SAM or SAM2 helpers, county analytics, transformer-model experiments, model export, stateful grid-search segmentation training, and config-driven orchestration.
+<div align="center">
+  <p><strong>A production-grade, end-to-end geospatial pipeline for detecting poultry houses in high-resolution NAIP imagery.</strong></p>
+</div>
 
-## Status
+## 📖 Overview
 
-The projectized workflow is now runnable from the terminal and covers the major notebook families in `notebook/` and `notebook_new/`.
+This project bridges the gap between exploratory data science and robust production engineering. It automates the entire lifecycle of geospatial object detection—from raw GeoTIFF preprocessing to advanced machine learning inference, and finally to GIS-ready vector exports and county-level analytics. 
 
-What is complete now:
+Whether you are training custom self-supervised models on remote sensing data or running bulk inference across terabytes of imagery, this pipeline provides a highly optimized, CLI-driven interface.
 
-- installable Python package under `src/poultry_geo/`
-- CLI entrypoint for the operational and research-support workflows
-- unit tests for the structured modules and notebook-derived helpers
-- real-asset smoke testing against the provided training data and NAIP GeoTIFFs
-- a local `data.yaml` wired to the actual dataset in `../Data/poultry_houses_db-2`
-- code-backed replacements for the notebook utilities around conversion, visualization, shapefile analysis, DETR or Mask2Former training, and CSV or KML export
+---
 
-What is still intentionally outside the structured package:
+## ✨ Key Capabilities
 
-- one-off manuscript figures, exploratory plots, and audit notebooks
-- advanced SAM2 runs when the external `sam2` package and checkpoints are not installed locally
-- any notebook cell that depends on hard-coded personal paths, ad hoc credentials, or manual interactive inspection
+### 🌍 Geospatial Data Processing
+- **High-Performance Slicing:** Efficiently slice massive GeoTIFFs into manageable tiles. Built-in **tile-level multiprocessing** ensures maximum CPU utilization even on single, monolithic files.
+- **Memory-Efficient Stitching:** Rebuild massive rasters from smaller tiles using **windowed writing**, circumventing the out-of-memory (OOM) errors common in naive GIS scripts.
+- **Format Conversion:** Rapidly convert GeoTIFFs to display-friendly formats (JPG/PNG) while normalizing data types.
 
-So the archive notebooks remain the research record, but the reusable functionality has been pulled into the package surface under `src/poultry_geo/`.
+### 🧠 Advanced Machine Learning
+- **Tiled Inference:** Stream large rasters iteratively through YOLO (v8/v11) or RT-DETR models. This lazy-loading approach allows inference on multi-gigabyte files on standard hardware.
+- **Self-Supervised Learning (SSL):** Native support for Masked Image Modeling (MIM) using Vision Transformers (ViT) and Sparse Masked Modeling (SparK) for CNNs (ResNet, CSPDarknet).
+- **Stateful Grid Search:** Conduct massive hyperparameter sweeps for segmentation tasks. If interrupted, the pipeline resumes exactly where it left off.
 
-## Local Assets
+### 🗺️ GIS Post-Processing & Analytics
+- **Spatial Deduplication:** Suppress overlapping detections using Centroid Distance or Mask Intersection-over-Union (IoU).
+- **Farm Clustering:** Automatically group individual poultry houses into farm entities using DBSCAN spatial clustering.
+- **Vector Export:** Direct, frictionless conversion of tabular detection data to ESRI Shapefiles (Polygons/Bounding Boxes) and KML for Google Earth.
+- **County-Level Analytics:** Calculate aggregated metrics, including NASS-corrected runoff volume screening based on precipitation data.
 
-The project expects a data directory structure. You should place your assets in a `Data` directory next to this project, or update the paths in your commands accordingly. 
+---
 
-Expected structure examples:
-- training dataset: `../Data/poultry_houses_db-2`
-- dataset YAML: `../Data/poultry_houses_db-2/data.yaml`
-- test GeoTIFF folder: `../Data/Test_ms_ga`
-- trained poultry weights: `../Data/runs/poultry`
+## 🛠 Installation & Setup
 
-The dataset YAML now uses the real local layout:
+The project supports macOS, Linux, and Windows. Python 3.10 or higher is required.
 
-```yaml
-path: .
-train: train/images
-val: valid/images
-test: test/images
-nc: 1
-names:
-  - poultry house
-```
-
-## Project Layout
-
-- `src/poultry_geo/`
-  Structured production package.
-- `scripts/poultry_geo.py`
-  Direct terminal launcher.
-- `scripts/poultry_geo.ps1` and `scripts/poultry_geo.cmd`
-  Windows launchers for the full CLI with append-only logging.
-- `scripts/slice_tiles.sh`
-  Bash wrapper for slicing one GeoTIFF or a directory of GeoTIFFs into `tif`, `png`, or `jpg` tiles.
-- `scripts/train_mim.*`
-  Wrappers for running self-supervised MAE pretraining on NAIP imagery.
-- `scripts/train_segmentation.*`
-  Wrappers for running stateful grid-search segmentation training (fine-tuning).
-- `configs/pipeline.example.json`
-  Example config for `run-pipeline`.
-- `tests/`
-  Unit tests for the extracted code.
-- `notebook/`
-  Flattened notebook mirror.
-- `notebook_new/`
-  Newer working notebooks and autosaves.
-- `pyproject.toml`
-  Package metadata and console entrypoint.
-- `requirements.txt`
-  Core install for package development and tests.
-- `requirements-ml.txt`
-  Heavier ML install for YOLO, export, and SAM.
-- `Makefile`
-  Convenience setup and test commands.
-
-## Modules
-
-- `geotiff.py`
-  GeoTIFF discovery, edge-snapped no-padding slicing, and stitching back to original extent.
-- `inference.py`
-  Tiled YOLO inference and geospatial detection CSV export.
-- `postprocess.py`
-  Centroid suppression, mask IoU suppression, rectangle creation, polygon merging, and farm clustering.
-- `gis.py`
-  Boundary shapefile export, polygon or bbox shapefile export, shapefile merging, dimension analysis, and farm shapefile creation.
-- `conversion.py`
-  GeoTIFF to image conversion, shapefile to CSV conversion, row sampling, and CSV to KML export.
-- `sam.py`
-  SAM refinement using georeferenced point and box prompts, plus optional SAM2 visualization helpers.
-- `visualization.py`
-  Detection overlays for GeoTIFFs and standard JPG or PNG imagery.
-- `training.py`
-  Ultralytics training wrapper for YOLO and RT-DETR family models.
-- `transformer_models.py`
-  HuggingFace DETR and Mask2Former dataset wrappers, training helpers, and DETR inference.
-- `exporting.py`
-  Ultralytics model export helpers.
-- `analytics.py`
-  County aggregation, NASS correction, runoff screening, and bootstrap helpers.
-- `pipeline.py`
-  JSON-configured orchestration for end-to-end runs.
-- `cli.py`
-  Terminal interface over the modules above.
-
-## Setup
-
-Ensure you have Python 3.10+ installed. It is recommended to use a virtual environment.
+### 1. POSIX (macOS / Linux)
 
 ```bash
+# Clone the repository (if applicable)
+# git clone <repo_url> && cd <repo>
+
 # Create and activate a virtual environment
 python -m venv .venv
-source .venv/bin/activate  # On Windows, use: .\.venv\Scripts\activate
+source .venv/bin/activate
 
-# Install dependencies
+# Install core and machine learning dependencies
 pip install -r requirements.txt
 pip install -r requirements-ml.txt
+
+# Install the package in editable mode
+pip install -e .
 ```
 
-Core package checks:
+### 2. Windows (PowerShell)
 
-```bash
-.venv/bin/python -m poultry_geo --help
-.venv/bin/python -m pytest -q
-```
-
-## Windows Quick Start
-
-On Windows, the easiest path is to use the new `*.cmd` wrappers from PowerShell or Command Prompt. They automatically invoke the PowerShell scripts with execution-policy bypass and append every run to `command.log`.
-
-From the project root directory on Windows:
+We provide wrapper scripts (`*.cmd`) to ensure smooth execution and bypass policy issues on Windows. For local setup with GPU support:
 
 ```powershell
+# Create environment
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
+
+# Install CUDA-enabled Torch (Adjust versions to match your local CUDA toolkit)
+.\.venv\Scripts\python.exe -m pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu126
+
+# Install dependencies and the package
 .\.venv\Scripts\pip.exe install -e .
 .\.venv\Scripts\pip.exe install -r requirements-ml.txt
 ```
 
-If you want NVIDIA GPU support on Windows or Linux, install the official CUDA-enabled
-PyTorch wheel first as shown above. Otherwise `requirements-ml.txt` may resolve to a
-CPU-only Torch build.
+---
 
-Then run either the full CLI wrapper:
+## 🏗️ Architecture & Modules
 
-```powershell
-.\scripts\poultry_geo.cmd --help
-.\scripts\poultry_geo.cmd create-boundaries ..\Data\Test_ms_ga .\boundary_shapes
-```
+The core functionality lives under `src/poultry_geo/`:
 
-Or the dedicated slicer wrapper:
+| Module | Description |
+|---|---|
+| `geotiff.py` | Handles all raster I/O. Implements edge-snapped slicing and window-based stitching. |
+| `inference.py` | Orchestrates sliding-window inference, generating georeferenced bounding boxes and polygons. |
+| `gis.py` | Manages vector transformations, projecting CRS, and exporting ESRI Shapefiles. |
+| `postprocess.py` | Applies NMS, centroid suppression, geometry merging, and DBSCAN clustering. |
+| `training.py` | Wraps Ultralytics engines for streamlined YOLO/RT-DETR training. |
+| `ssl_models.py` | Implements the adapters, ViTs, and decoders for MAE and SparK self-supervised learning. |
+| `analytics.py` | Performs county-level aggregations and statistical bootstrapping for runoff. |
 
-```powershell
-.\scripts\slice_tiles.cmd --input-dir ..\Data\Test_ms_ga --output-dir .\tmp\tiles_256_png --tile-size 256 --format png --workers auto
-```
+---
 
-If you prefer PowerShell directly instead of the `.cmd` wrappers:
+## 💻 CLI Reference Guide
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\slice_tiles.ps1 --input-dir ..\Data\Test_ms_ga --output-dir .\tmp\tiles_256_png --tile-size 256 --format png --workers auto
-```
+The primary entry point is the `poultry-geo` command. 
 
-The Windows wrappers support the same append-only log controls:
+> **Logging Note:** Every command executed is automatically appended to `command.log` with timestamps, arguments, and execution duration. Disable this per-run with `--no-log`.
 
-- `--log-file PATH`
-  Write to a different log file instead of `command.log`.
-- `--no-log`
-  Disable wrapper logging for one run.
-- `--python PATH`
-  Force a specific Python executable.
-
-Each logged command records its command line, working directory, start and finish
-timestamps, exit code, and elapsed duration. Python failures retain the complete
-traceback. PowerShell wrapper failures also record the exception type, category,
-source position, and PowerShell stack trace.
-
-Commands also display progress and write the same progress records to the log.
-File-oriented operations report a percentage, item count, current filename, and
-estimated time remaining. Operations without a reliable total display an animated
-`working` bar with elapsed time. The terminal updates one progress row in place;
-the log stores only meaningful progress events. Pass `--no-progress` to disable
-progress output.
-
-## CLI Workflows
-
-The package can be run either as the installed console script or directly through Python:
-
+### Data Preparation
 ```bash
-.venv/bin/python -m poultry_geo --help
-.venv/bin/python scripts/poultry_geo.py --help
+# Slice a directory of GeoTIFFs into 256x256 PNGs, utilizing all CPU cores
+poultry-geo slice ../Data/Raw ./tiles --tile-size 256 --format png --workers auto
+
+# Reconstruct a full GeoTIFF from a directory of tiles
+poultry-geo stitch ./tiles reconstructed.tif
+
+# Extract boundary shapefiles from raw imagery extents
+poultry-geo create-boundaries ../Data/Raw ./boundaries
 ```
 
-## NAIP Self-Supervised Data Loading
+### Inference & Post-Processing
+```bash
+# 1. Run inference (Streams tiles directly from the GeoTIFFs)
+poultry-geo infer-yolo ../Data/Rasters weights/best.pt raw_detections.csv --window-size 3000 --stride 3000 --device cuda
 
-`poultry_geo.naip_data` provides a PyTorch input pipeline for recursively nested
-NAIP tiles:
+# 2. Suppress overlapping/duplicate predictions
+poultry-geo mask-nms raw_detections.csv clean_detections.csv --iou-threshold 0.5
 
-```python
-from poultry_geo.naip_data import NAIPDataset, get_dataloaders
-
-train_loader, val_loader = get_dataloaders(
-    "tmp/test_jpg",
-    batch_size=64,
-    crop_size=224,
-    precision="bf16",
-    num_workers=8,
-    prefetch_factor=4,
-)
-
-batch = next(iter(train_loader))
-images = batch["image"]  # [B, C, H, W], CPU tensor
-paths = batch["path"]
+# 3. Cluster individual houses into Farm units
+poultry-geo cluster-farms clean_detections.csv farms.csv --eps-house 50.0 --min-samples 2
 ```
 
-The dataset supports RGB JPG/PNG, multi-band GeoTIFF, and CHW/HWC NPY arrays.
-Training samples receive synchronized random crops and flips across all bands,
-plus channel-aware color jitter. Validation uses deterministic center crops.
-Train/validation splitting occurs by parent source directory to prevent adjacent
-tiles from the same source raster leaking across splits. Distributed samplers
-are selected automatically after `torch.distributed` is initialized.
+### GIS Export & Analytics
+```bash
+# Export precise detection polygons to an ESRI Shapefile
+poultry-geo export-polygons clean_detections.csv ./shapefiles --crs EPSG:26916
 
-Input precision may be `fp32`, `fp16`, or `bf16`. NF4 is model-weight
-quantization and is intentionally not used as an image tensor dtype.
+# Convert detections to KML for stakeholder review in Google Earth
+poultry-geo csv-to-kml clean_detections.csv export.kml
 
-## Grid-Search Segmentation Fine-Tuning
+# Aggregate data to the county level
+poultry-geo aggregate-counties clean_detections.csv county_summary.csv
+```
 
-The project provides a stateful, grid-search training workflow to fine-tune custom foundational backbones (like ResNet50 and the full span of `timm` Vision Transformers: Tiny, Small, Base, and Large) into binary roof-mask segmenters.
+### Foundation Model Research (SSL)
+```bash
+# Train a ViT using Masked Image Modeling (MIM)
+python -m poultry_geo train-mim ./data ./runs/mim --embed-dim 192 --depth 8 --num-heads 6 --device cuda
 
-This workflow automatically discovers required `timm` attributes, injects LoRA bottleneck layers if requested, and scales the inputs seamlessly. By default, it automatically downloads and starts from ImageNet pre-trained weights.
+# Train a ResNet50 using Sparse Masked Modeling (SparK)
+python -m poultry_geo train-spark ./data ./runs/spark --backbone-type resnet50 --precision bf16
 
-**Configuration:**
-The grid search is controlled via a `config.yaml` file. You define your data paths (raw images and `.png` masks) and list the hyperparameter permutations to test:
+# Inspect ViT tensor shapes and adapter logic before a heavy training run
+python -m poultry_geo inspect-backbone ./data --batch-size 2 --crop-size 224
+```
 
+---
+
+## ⚙️ Configuration-Driven Execution
+
+For complex workflows, the CLI supports JSON/YAML configuration files to orchestrate the pipeline automatically.
+
+### End-to-End Pipeline
+Run an entire pipeline (slicing, inference, post-processing, and export) via a single config file:
+```bash
+poultry-geo run-pipeline configs/pipeline.example.json
+```
+
+### Stateful Grid-Search (Segmentation)
+Fine-tune custom backbones over a massive matrix of hyperparameters. If the process dies, rerunning the command resumes at the exact permutation it failed on.
+```bash
+./scripts/train_segmentation.sh --training-name poultry-seg --config configs/spark_grid_search.yaml
+```
+
+**Example `spark_grid_search.yaml`:**
 ```yaml
 data:
-  image_dir: ./tmp/segmentation/images
-  mask_dir: ./tmp/segmentation/masks
+  image_dir: ./data/images
+  mask_dir: ./data/masks
   image_size: 256
-  n_channels: 3
   batch_size: 8
-  num_workers: 4
-
-runtime:
-  device: auto
-  seed: 27
-  output_dir: ./runs/grid-search
-  pretrained: true
 
 grid_search:
-  backbone:
-    - resnet50
-    - vit_base_patch16_224
-  optimizer:
-    - adamw
-  precision:
-    - fp32
-    - bf16
-  learning_rate:
-    - 0.0001
-  weight_decay:
-    - 0.0001
-  freeze_backbone:
-    - false
-  use_lora:
-    - false
+  backbone: ["resnet50", "vit_base_patch16_224"]
+  learning_rate: [0.0001, 0.0005]
+  use_lora: [false, true]
 ```
 
-**Execution:**
-Use the wrapper scripts to run the campaign. The script is stateful; if interrupted, running the exact same command resumes the grid search where it left off.
+---
 
-macOS/Linux:
+## 🧪 Testing & Validation
+
+The codebase maintains rigorous quality standards, informed by Test-Driven Development (TDD). 
+
+Run the test suite:
 ```bash
-./scripts/train_segmentation.sh --training-name my-grid-search --config config.yaml --epochs 100
+pytest
 ```
+*The suite includes over 47 unit tests validating geospatial logic, coordinate transformations, multiprocessing locks, and ML tensor shapes.*
 
-Windows:
-```powershell
-.\scripts\train_segmentation.cmd --training-name my-grid-search --config config.yaml --epochs 100
-```
+---
 
-## Inspect SSL Backbone
-
-`poultry_geo.ssl_models` provides a lightweight 1x1 `BandAdapter` and a
-custom `RemoteSensingViT` backbone for self-supervised inspection runs:
-
-```python
-from poultry_geo.ssl_models import BandAdapter, RemoteSensingViT
-
-adapter = BandAdapter(in_channels=4, precision="bf16")
-backbone = RemoteSensingViT(
-    image_size=224,
-    patch_size=16,
-    embed_dim=192,
-    depth=12,
-    num_heads=3,
-    precision="bf16",
-)
-```
-
-To run one real batch through the adapter and backbone and print tensor shapes:
-
-macOS/Linux:
-
-```bash
-./scripts/inspect_backbone.sh --data-root ./tmp/test_jpg --batch-size 2 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 12 --num-heads 3 --precision bf16
-```
-
-Windows:
-
-```powershell
-.\scripts\inspect_backbone.cmd --data-root .\tmp\test_jpg --batch-size 2 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 12 --num-heads 3 --precision bf16
-```
-
-Direct CLI on either platform:
-
-```bash
-python -m poultry_geo inspect-backbone tmp/test_jpg --batch-size 2 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 12 --num-heads 3 --precision bf16
-```
-
-This prints:
-
-- input tensor shape `[B, n, H, W]`
-- adapted tensor shape `[B, 3, H, W]`
-- token tensor shape `[B, num_patches, embed_dim]`
-- patch grid, requested precision, resolved precision, and device
-
-If the wrapper picks the wrong interpreter on a machine with multiple Python
-installs, pass `--python` explicitly:
-
-- Windows: `--python "$env:CONDA_PREFIX\python.exe"`
-- macOS/Linux: `--python "$CONDA_PREFIX/bin/python"`
-
-## Inspect Segmentation Model
-
-`poultry_geo.ssl_models` also provides a LoRA-ready segmentation stack for
-roof-mask inspection runs:
-
-```python
-from poultry_geo.ssl_models import RemoteSensingSegmentationModel
-
-model = RemoteSensingSegmentationModel(
-    in_channels=4,
-    image_size=256,
-    patch_size=16,
-    embed_dim=192,
-    depth=8,
-    num_heads=6,
-    precision="bf16",
-    use_lora=True,
-    freeze_backbone=True,
-)
-```
-
-To run one real batch through the adapter, ViT backbone, and decoder head and
-print tensor shapes:
-
-macOS/Linux:
-
-```bash
-./scripts/inspect_segmentation.sh --python "$CONDA_PREFIX/bin/python" --data-root ./tmp/test_jpg --batch-size 2 --crop-size 256 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --precision bf16 --use-lora --freeze-backbone --device mps
-```
-
-Windows:
-
-```powershell
-.\scripts\inspect_segmentation.cmd --python "$env:CONDA_PREFIX\python.exe" --data-root .\tmp\test_jpg --batch-size 2 --crop-size 256 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --precision bf16 --use-lora --freeze-backbone --device gpu
-```
-
-Direct CLI on either platform:
-
-```bash
-python -m poultry_geo inspect-segmentation tmp/test_jpg --batch-size 2 --crop-size 256 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --precision bf16 --use-lora --freeze-backbone --device cuda
-```
-
-This prints:
-
-- input tensor shape `[B, n, H, W]`
-- adapted tensor shape `[B, 3, H, W]`
-- token tensor shape `[B, num_patches, embed_dim]`
-- mask tensor shape `[B, 1, H, W]`
-- patch grid, requested precision, resolved precision, LoRA flags, and device
-
-## Train MIM SSL
-
-`poultry_geo.ssl_models` and `poultry_geo.training` now provide a MAE-style
-masked image modeling path for self-supervised pretraining:
-
-```python
-from torch.optim import AdamW
-
-from poultry_geo.naip_data import get_dataloaders
-from poultry_geo.ssl_models import RemoteSensingMIMModel
-from poultry_geo.training import SSLTrainer
-
-train_loader, val_loader = get_dataloaders(
-    "tmp/test_jpg",
-    batch_size=4,
-    crop_size=224,
-    channels=3,
-    precision="bf16",
-    num_workers=4,
-)
-model = RemoteSensingMIMModel(
-    in_channels=3,
-    image_size=224,
-    patch_size=16,
-    embed_dim=192,
-    depth=8,
-    num_heads=6,
-    precision="bf16",
-    mask_ratio=0.75,
-)
-optimizer = AdamW(
-    [parameter for parameter in model.parameters() if parameter.requires_grad],
-    lr=1e-4,
-    weight_decay=0.05,
-)
-trainer = SSLTrainer(
-    model,
-    train_loader,
-    optimizer,
-    val_loader=val_loader,
-    device="cuda",
-    precision="bf16",
-)
-summary = trainer.fit(epochs=1, output_dir="runs/mim-smoke")
-```
-
-To run one real SSL smoke training job:
-
-macOS/Linux:
-
-```bash
-./scripts/train_mim.sh --python "$CONDA_PREFIX/bin/python" --data-root ./tmp/test_jpg --output-dir ./runs/mim-smoke --batch-size 4 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --epochs 1 --precision fp16 --device mps
-```
-
-Windows:
-
-```powershell
-.\scripts\train_mim.cmd --python "$env:CONDA_PREFIX\python.exe" --data-root .\tmp\test_jpg --output-dir .\runs\mim-smoke --batch-size 4 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --epochs 1 --precision bf16 --device gpu
-```
-
-Direct CLI on either platform:
-
-```bash
-python -m poultry_geo train-mim tmp/test_jpg runs/mim-smoke --batch-size 4 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --epochs 1 --precision bf16 --device cuda
-```
-
-NF4 / QLoRA-style run:
-
-```bash
-python -m poultry_geo train-mim tmp/test_jpg runs/mim-nf4 --batch-size 4 --crop-size 224 --channels 4 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --epochs 1 --precision nf4 --use-lora --freeze-backbone --device cuda
-```
-
-This writes:
-
-- `last.pt`
-- `best.pt`
-- `metrics.json`
-
-The `nf4` path expects `bitsandbytes` when 4-bit loading is available. If it is
-missing or unsupported on the current machine, the run falls back to BF16 and
-keeps the same command surface.
-
-On Windows, use:
-
-```powershell
-.\scripts\poultry_geo.cmd --help
-```
-
-Main commands:
-
-```bash
-# Slice and stitch GeoTIFFs
-.venv/bin/python -m poultry_geo slice input.tif output_tiles --tile-size 3000
-.venv/bin/python -m poultry_geo stitch output_tiles rebuilt.tif
-
-# Shell wrapper for directory-based slicing into image tiles
-./scripts/slice_tiles.sh --input-dir geotiffs/ --output-dir output_tiles/ --tile-size 256 --format png
-
-# Convert GeoTIFFs and convert shapefiles
-.venv/bin/python -m poultry_geo convert-geotiff geotiffs/ converted_images/ --format jpg
-.venv/bin/python -m poultry_geo shapefile-to-csv polygons.shp polygons.csv
-.venv/bin/python -m poultry_geo shapefile-to-projected-csv polygons.shp polygons_projected.csv
-.venv/bin/python -m poultry_geo csv-to-kml detections.csv detections.kml
-
-# Create GeoTIFF boundary shapefiles
-.venv/bin/python -m poultry_geo create-boundaries geotiffs/ boundary_shapes/
-
-# YOLO inference and post-processing
-.venv/bin/python -m poultry_geo infer-yolo geotiffs/ best.pt detections.csv --window-size 3000 --stride 3000
-.venv/bin/python -m poultry_geo centroid-suppress detections.csv detections_dedup.csv
-.venv/bin/python -m poultry_geo mask-nms detections.csv detections_mask_nms.csv
-.venv/bin/python -m poultry_geo create-rectangles detections.csv detections_rect.csv
-.venv/bin/python -m poultry_geo merge-polygons detections.csv detections_merged.csv
-.venv/bin/python -m poultry_geo merge-adjacent-masks detections_rect.csv detections_rect_merged.csv
-.venv/bin/python -m poultry_geo merge-masks-by-edge detections_rect.csv detections_edge_merged.csv
-.venv/bin/python -m poultry_geo cluster-farms detections_dedup.csv farm_centroids.csv
-
-# GIS export and shapefile analysis
-.venv/bin/python -m poultry_geo export-polygons detections.csv polygon_shapes/
-.venv/bin/python -m poultry_geo export-bboxes detections.csv bbox_shapes/
-.venv/bin/python -m poultry_geo merge-overlapping-shapefile polygon_shapes/polygon_shapes.shp merged.shp
-.venv/bin/python -m poultry_geo process-shapefile-dimensions merged.shp merged_with_dims.shp
-.venv/bin/python -m poultry_geo filter-shapefile merged_with_dims.shp filtered.shp
-.venv/bin/python -m poultry_geo identify-farms-shapefile filtered.shp poultry_farms.shp
-
-# SAM refinement
-.venv/bin/python -m poultry_geo sam-refine detections.csv geotiffs/ sam_output/ weights/sam_vit_h_4b8939.pth
-.venv/bin/python -m poultry_geo sam-bbox-refine bbox_projected.csv geotiffs/ sam_bbox_output/ weights/sam_vit_h_4b8939.pth
-
-# Visualization
-.venv/bin/python -m poultry_geo visualize-geotiffs geotiffs/ detections.csv annotated_geotiffs/
-.venv/bin/python -m poultry_geo visualize-jpgs detections_rect.csv converted_images/ annotated_jpgs/
-
-# Training and export
-.venv/bin/python -m poultry_geo train-yolo data.yaml runs/poultry --models yolo11n-seg.pt
-.venv/bin/python -m poultry_geo train-yolo data.yaml runs/poultry --models rtdetr-l.pt --family rtdetr
-.venv/bin/python -m poultry_geo train-detr train/images train/_annotations.coco.json runs/detr
-.venv/bin/python -m poultry_geo train-mask2former train/images train/_annotations.coco.json runs/mask2former
-./scripts/train_segmentation.sh --training-name segmentation-demo --config config.yaml --epochs 100
-.venv/bin/python -m poultry_geo export-model weights/best.pt --format torchscript
-
-# County analytics
-.venv/bin/python -m poultry_geo aggregate-counties detections_with_county.csv county_summary.csv
-.venv/bin/python -m poultry_geo runoff-screening county_summary.csv county_precipitation.csv county_runoff.csv
-
-# Config-driven orchestration
-.venv/bin/python -m poultry_geo run-pipeline configs/pipeline.example.json
-```
-
-## Local Usage Examples
-
-From the project root, the dataset and test rasters can be used directly (assuming they are placed in `../Data`):
-
-```bash
-# Verify tests
-.venv/bin/python -m pytest -q
-
-# Train from the poultry dataset
-.venv/bin/python -m poultry_geo train-yolo \
-  ../Data/poultry_houses_db-2/data.yaml \
-  runs/poultry \
-  --models ../Data/runs/poultry/yolov8n-seg-bs16-ep200/weights/best.pt \
-  --epochs 1 --batch-size 1 --image-size 256 --device mps
-
-# Create boundaries for the test GeoTIFFs
-.venv/bin/python -m poultry_geo create-boundaries \
-  ../Data/Test_ms_ga \
-  boundary_shapes
-
-# Run inference on the GeoTIFF folder with an existing poultry checkpoint
-.venv/bin/python -m poultry_geo infer-yolo \
-  ../Data/Test_ms_ga \
-  ../Data/runs/poultry/yolov8s-seg-bs16-ep200/weights/best.pt \
-  detections.csv \
-  --window-size 3000 --stride 3000 --confidence-threshold 0.01 --device mps
-```
-
-## Validation
-
-Current verified state on this machine:
-
-- full unit suite passes: `47 passed`
-- all CLI subcommands parse and expose help
-- `slice` ran on a real GeoTIFF from `../Data/Test_ms_ga`
-- `stitch` rebuilt the original raster extent correctly
-- `create-boundaries` generated `11` shapefiles from the `Test_ms_ga` folder
-- `infer-yolo` ran on a real 3000x3000 crop from the provided NAIP imagery and produced `10` detections
-- `centroid-suppress`, `mask-nms`, `cluster-farms`, and `export-polygons` all ran successfully on that real detection output
-- notebook-derived helpers for rectangles, bbox export, shapefile dimensions, polygon merging, and shapefile filtering are covered by unit tests
-- `run-pipeline` completed successfully on the real inference crop
-- `aggregate-counties` and `runoff-screening` passed on smoke-test county inputs built from real detections
-- `export-model` succeeded to TorchScript
-- `train-yolo` completed a 1-epoch dry run on a tiny subset built from the real poultry dataset
-
-Smoke outputs from the latest run are stored under `tmp/smoke_real`.
-
-## Pipeline Outputs
-
-`run-pipeline` writes a working directory with artifacts such as:
-
-- boundary shapefiles
-- raw detection CSV
-- centroid-suppressed CSV
-- mask-NMS CSV when enabled
-- farm centroid CSV
-- polygon shapefile
-- SAM overlays when enabled
-- `pipeline_outputs.json` summary file
-
-## Known Prerequisites
-
-- `sam-refine` requires a local SAM checkpoint such as `sam_vit_h_4b8939.pth`; that checkpoint is not bundled in this workspace
-- training and inference expect the heavier ML stack from `requirements-ml.txt`
-- some examples assume Apple Metal (`--device mps`) on this machine; use `cpu` or `cuda` as appropriate on other systems
-
-## Notebook Archive
-
-The notebook folders remain useful as the research record:
-
-- `notebook/`
-- `notebook_new/`
-
-They still include exploratory work, checkpoints, manuscript analysis, and one-off experiments. The structured package in `src/poultry_geo/` is the maintained terminal-facing project surface that recreates the reusable notebook functionality.
+## 📝 License & Contact
+*Add your licensing and maintainer contact information here.*

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 import numpy as np
 import pandas as pd
@@ -35,7 +35,7 @@ def _normalize_tile_to_pil(image_array: np.ndarray) -> Image.Image:
     return Image.fromarray(rgb)
 
 
-def _iter_same_shape_batches(tiles: list[Any], batch_size: int):
+def _iter_same_shape_batches(tiles: Iterable[Any], batch_size: int):
     current_batch: list[Any] = []
     current_shape: tuple[int, int] | None = None
 
@@ -174,8 +174,8 @@ def run_yolo_inference(
     all_records: list[dict[str, Any]] = []
     geotiff_paths = find_geotiffs(geotiff_dir)
     for index, geotiff_path in enumerate(geotiff_paths, start=1):
-        tiles = slice_geotiff_to_memory(geotiff_path, tile_size=window_size, stride=stride)
-        for batch_tiles in _iter_same_shape_batches(tiles, batch_size):
+        tile_iterator = iter_slice_geotiff(geotiff_path, tile_size=window_size, stride=stride)
+        for batch_tiles in _iter_same_shape_batches(tile_iterator, batch_size):
             batch_images = [_normalize_tile_to_pil(tile.image_array) for tile in batch_tiles]
             results = model(batch_images, device=device, batch=len(batch_tiles), verbose=False)
             for tile, result in zip(batch_tiles, results):

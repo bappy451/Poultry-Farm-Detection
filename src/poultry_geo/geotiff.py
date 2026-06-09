@@ -182,46 +182,131 @@ def slice_geotiff_to_files(
     to_jpeg: bool = False,
     output_format: str | None = None,
     jpeg_quality: int = DEFAULT_JPEG_QUALITY,
+    workers: int | str | None = 1,
 ) -> list[Path]:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    written_paths: list[Path] = []
     resolved_output_format = _resolve_output_format(output_format, to_jpeg)
 
-    for tile in iter_slice_geotiff(geotiff_path, tile_size=tile_size, stride=stride):
-        row_index, col_index = tile.position
-        if resolved_output_format == "tif":
-            output_path = output_dir / f"slice_{row_index}_{col_index}.tif"
-            with rasterio.open(
-                output_path,
-                "w",
-                driver="GTiff",
-                height=tile.image_array.shape[1],
-                width=tile.image_array.shape[2],
-                count=tile.count,
-                dtype=tile.dtype,
-                crs=tile.crs,
-                transform=tile.transform,
-            ) as dst:
-                dst.write(tile.image_array)
-                dst.update_tags(
-                    offset_x=tile.offset_xy[0],
-                    offset_y=tile.offset_xy[1],
-                    valid_height=tile.valid_shape[0],
-                    valid_width=tile.valid_shape[1],
-                )
-        else:
-            suffix = ".jpg" if resolved_output_format in {"jpg", "jpeg"} else ".png"
-            output_path = output_dir / f"slice_{row_index}_{col_index}{suffix}"
-            _write_image_tile(
-                tile.image_array,
-                output_path,
-                resolved_output_format,
-                jpeg_quality=jpeg_quality,
-            )
-        written_paths.append(output_path)
+    # If workers > 1, we use multiprocessing to slice tiles in parallel.
+    # We do not use this if we're already inside a worker process (handled by callers).
+    num_tiles = 0
+    with rasterio.open(geotiff_path) as src:
+        num_tiles = sum(1 for _ in iter_tile_windows(src.width, src.height, tile_size, stride))
 
-    return written_paths
+    resolved_workers = _resolve_worker_count(workers, num_tiles)
+
+    if resolved_workers <= 1:
+        written_paths: list[Path] = []
+        for tile in iter_slice_geotiff(geotiff_path, tile_size=tile_size, stride=stride):
+            written_paths.append(_write_single_tile(tile, output_dir, resolved_output_format, jpeg_quality))
+        return written_paths
+
+    # Parallel slicing
+    jobs = []
+    stride_val = _resolve_stride(tile_size, stride)
+    with rasterio.open(geotiff_path) as src:
+        width, height = src.width, src.height
+        for row_index, col_index, x_start, y_start, x_end, y_end in iter_tile_windows(
+            width, height, tile_size, stride_val
+        ):
+            jobs.append(
+                (
+                    str(geotiff_path),
+                    str(output_dir),
+                    row_index,
+                    col_index,
+                    x_start,
+                    y_start,
+                    x_end,
+                    y_end,
+                    resolved_output_format,
+                    jpeg_quality,
+                )
+            )
+
+    with ProcessPoolExecutor(max_workers=resolved_workers) as executor:
+        results = list(executor.map(_write_tile_job, jobs))
+    return [Path(r) for r in results]
+
+
+def _write_single_tile(
+    tile: TileSlice,
+    output_dir: Path,
+    resolved_output_format: str,
+    jpeg_quality: int,
+) -> Path:
+    row_index, col_index = tile.position
+    if resolved_output_format == "tif":
+        output_path = output_dir / f"slice_{row_index}_{col_index}.tif"
+        with rasterio.open(
+            output_path,
+            "w",
+            driver="GTiff",
+            height=tile.image_array.shape[1],
+            width=tile.image_array.shape[2],
+            count=tile.count,
+            dtype=tile.dtype,
+            crs=tile.crs,
+            transform=tile.transform,
+        ) as dst:
+            dst.write(tile.image_array)
+            dst.update_tags(
+                offset_x=tile.offset_xy[0],
+                offset_y=tile.offset_xy[1],
+                valid_height=tile.valid_shape[0],
+                valid_width=tile.valid_shape[1],
+            )
+    else:
+        suffix = ".jpg" if resolved_output_format in {"jpg", "jpeg"} else ".png"
+        output_path = output_dir / f"slice_{row_index}_{col_index}{suffix}"
+        _write_image_tile(
+            tile.image_array,
+            output_path,
+            resolved_output_format,
+            jpeg_quality=jpeg_quality,
+        )
+    return output_path
+
+
+def _write_tile_job(job: tuple) -> str:
+    (
+        geotiff_path,
+        output_dir,
+        row_index,
+        col_index,
+        x_start,
+        y_start,
+        x_end,
+        y_end,
+        output_format,
+        jpeg_quality,
+    ) = job
+
+    with rasterio.open(geotiff_path) as src:
+        window = Window(x_start, y_start, x_end - x_start, y_end - y_start)
+        image_array = src.read(window=window)
+        valid_shape = (image_array.shape[1], image_array.shape[2])
+        transform = src.transform
+        new_transform = from_origin(
+            transform.c + x_start * transform.a,
+            transform.f + y_start * transform.e,
+            transform.a,
+            -transform.e,
+        )
+        tile = TileSlice(
+            image_array=image_array,
+            transform=new_transform,
+            crs=src.crs,
+            dtype=src.dtypes[0],
+            count=src.count,
+            position=(row_index, col_index),
+            offset_xy=(x_start, y_start),
+            valid_shape=valid_shape,
+            source_path=Path(geotiff_path),
+        )
+        output_path = _write_single_tile(tile, Path(output_dir), output_format, jpeg_quality)
+        return str(output_path)
 
 
 def slice_geotiff_collection_to_files(
@@ -247,6 +332,7 @@ def slice_geotiff_collection_to_files(
             stride=stride,
             output_format=output_format,
             jpeg_quality=jpeg_quality,
+            workers=workers,
         )
         if progress_callback is not None:
             progress_callback(1, 1, input_path.name)
@@ -322,6 +408,7 @@ def _slice_single_geotiff_job(
             stride=stride,
             output_format=output_format,
             jpeg_quality=jpeg_quality,
+            workers=1,
         )
         return [str(path) for path in written]
     except Exception as exc:
@@ -366,18 +453,7 @@ def stitch_geotiff_tiles(input_dir: str | Path, output_geotiff: str | Path) -> P
         full_width = max(full_width, offset_x + valid_width)
         full_height = max(full_height, offset_y + valid_height)
 
-    stitched = np.zeros((count, full_height, full_width), dtype=dtype)
-
     top_left_transform = min(tile_layouts, key=lambda item: (item[2], item[1]))[5]
-
-    for path, offset_x, offset_y, valid_width, valid_height, _ in tile_layouts:
-        with rasterio.open(path) as src:
-            tile_data = src.read(window=Window(0, 0, valid_width, valid_height))
-        stitched[
-            :,
-            offset_y : offset_y + valid_height,
-            offset_x : offset_x + valid_width,
-        ] = tile_data
 
     with rasterio.open(
         output_geotiff,
@@ -390,6 +466,9 @@ def stitch_geotiff_tiles(input_dir: str | Path, output_geotiff: str | Path) -> P
         crs=crs,
         transform=from_origin(top_left_transform.c, top_left_transform.f, top_left_transform.a, -top_left_transform.e),
     ) as dst:
-        dst.write(stitched)
+        for path, offset_x, offset_y, valid_width, valid_height, _ in tile_layouts:
+            with rasterio.open(path) as src:
+                tile_data = src.read(window=Window(0, 0, valid_width, valid_height))
+            dst.write(tile_data, window=Window(offset_x, offset_y, valid_width, valid_height))
 
     return output_geotiff

@@ -214,3 +214,40 @@ def test_slice_geotiff_collection_to_files_includes_path_on_worker_failure(tmp_p
             output_format="png",
             workers=2,
         )
+
+
+def test_slice_geotiff_to_files_supports_multiple_workers(tmp_path: Path) -> None:
+    raster_path = tmp_path / "input.tif"
+    # Create a slightly larger raster to ensure multiple tiles
+    data = np.arange(3 * 10 * 10, dtype=np.uint8).reshape(3, 10, 10)
+    _write_test_raster(raster_path, data)
+
+    output_dir = tmp_path / "tiles"
+    written = slice_geotiff_to_files(
+        raster_path,
+        output_dir,
+        tile_size=4,
+        workers=2,
+    )
+
+    # 10x10 with 4x4 tiles: compute_tile_starts(10, 4, 4) -> [0, 4, 6]
+    # So 3x3 = 9 tiles
+    assert len(written) == 9
+    assert (output_dir / "slice_0_0.tif").exists()
+    assert (output_dir / "slice_2_2.tif").exists()
+
+
+def test_slice_geotiff_collection_to_files_handles_single_file_with_workers(tmp_path: Path) -> None:
+    raster_path = tmp_path / "input.tif"
+    data = np.zeros((3, 10, 10), dtype=np.uint8)
+    _write_test_raster(raster_path, data)
+
+    output_dir = tmp_path / "tiles"
+    written = slice_geotiff_collection_to_files(
+        raster_path,
+        output_dir,
+        tile_size=4,
+        workers=2,
+    )
+
+    assert len(written) == 9
