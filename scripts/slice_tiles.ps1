@@ -71,27 +71,27 @@ while ($index -lt $originalArgs.Count) {
         continue
     }
     if ($token -eq "--log-file") {
-        if ($index + 1 -ge $originalArgs.Count) {
+        if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) {
             throw "--log-file requires a path."
         }
         $logFile = Resolve-UserPath -BaseDir $invocationCwd -RawPath $originalArgs[$index + 1]
         $index += 2
         continue
     }
-    if ($token.StartsWith("--log-file=")) {
+    if ($token -like "--log-file=*") {
         $logFile = Resolve-UserPath -BaseDir $invocationCwd -RawPath $token.Substring("--log-file=".Length)
         $index += 1
         continue
     }
     if ($token -eq "--python") {
-        if ($index + 1 -ge $originalArgs.Count) {
+        if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) {
             throw "--python requires a path."
         }
         $pythonExe = $originalArgs[$index + 1]
         $index += 2
         continue
     }
-    if ($token.StartsWith("--python=")) {
+    if ($token -like "--python=*") {
         $pythonExe = $token.Substring("--python=".Length)
         $index += 1
         continue
@@ -111,37 +111,51 @@ try {
     while ($index -lt $originalArgs.Count) {
         $token = $originalArgs[$index]
         switch -Regex ($token) {
+            '^--input-dir=(.*)$' { $inputDir = $Matches[1]; $index += 1; continue }
             '^--input-dir$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--input-dir requires a path." }
                 $inputDir = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--output-dir=(.*)$' { $outputDir = $Matches[1]; $index += 1; continue }
             '^--output-dir$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--output-dir requires a path." }
                 $outputDir = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--tile-size=(.*)$' { $tileSize = $Matches[1]; $index += 1; continue }
             '^--tile-size$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--tile-size requires a value." }
                 $tileSize = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--stride=(.*)$' { $stride = $Matches[1]; $index += 1; continue }
             '^--stride$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--stride requires a value." }
                 $stride = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--format=(.*)$' { $format = $Matches[1]; $index += 1; continue }
             '^--format$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--format requires a value." }
                 $format = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--jpeg-quality=(.*)$' { $jpegQuality = $Matches[1]; $index += 1; continue }
             '^--jpeg-quality$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--jpeg-quality requires a value." }
                 $jpegQuality = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--workers=(.*)$' { $workers = $Matches[1]; $index += 1; continue }
             '^--workers$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--workers requires a value." }
                 $workers = $originalArgs[$index + 1]
                 $index += 2
                 continue

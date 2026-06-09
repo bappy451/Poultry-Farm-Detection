@@ -166,30 +166,137 @@ setup_logging
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --data-root) DATA_ROOT="$2"; shift 2 ;;
-    --batch-size) BATCH_SIZE="$2"; shift 2 ;;
-    --crop-size) CROP_SIZE="$2"; shift 2 ;;
-    --channels) CHANNELS="$2"; shift 2 ;;
-    --precision) PRECISION="$2"; shift 2 ;;
-    --patch-size) PATCH_SIZE="$2"; shift 2 ;;
-    --embed-dim) EMBED_DIM="$2"; shift 2 ;;
-    --depth) DEPTH="$2"; shift 2 ;;
-    --num-heads) NUM_HEADS="$2"; shift 2 ;;
-    --mlp-ratio) MLP_RATIO="$2"; shift 2 ;;
-    --num-workers) NUM_WORKERS="$2"; shift 2 ;;
-    --device) DEVICE_NAME="$2"; shift 2 ;;
+    --data-root=*) DATA_ROOT="${1#*=}"; shift 1 ;;
+    --data-root)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --data-root requires a path." >&2
+        exit 1
+      fi
+      DATA_ROOT="$2"; shift 2 ;;
+    --batch-size=*) BATCH_SIZE="${1#*=}"; shift 1 ;;
+    --batch-size)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --batch-size requires a value." >&2
+        exit 1
+      fi
+      BATCH_SIZE="$2"; shift 2 ;;
+    --crop-size=*) CROP_SIZE="${1#*=}"; shift 1 ;;
+    --crop-size)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --crop-size requires a value." >&2
+        exit 1
+      fi
+      CROP_SIZE="$2"; shift 2 ;;
+    --channels=*) CHANNELS="${1#*=}"; shift 1 ;;
+    --channels)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --channels requires a value." >&2
+        exit 1
+      fi
+      CHANNELS="$2"; shift 2 ;;
+    --precision=*) PRECISION="${1#*=}"; shift 1 ;;
+    --precision)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --precision requires a value." >&2
+        exit 1
+      fi
+      PRECISION="$2"; shift 2 ;;
+    --patch-size=*) PATCH_SIZE="${1#*=}"; shift 1 ;;
+    --patch-size)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --patch-size requires a value." >&2
+        exit 1
+      fi
+      PATCH_SIZE="$2"; shift 2 ;;
+    --embed-dim=*) EMBED_DIM="${1#*=}"; shift 1 ;;
+    --embed-dim)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --embed-dim requires a value." >&2
+        exit 1
+      fi
+      EMBED_DIM="$2"; shift 2 ;;
+    --depth=*) DEPTH="${1#*=}"; shift 1 ;;
+    --depth)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --depth requires a value." >&2
+        exit 1
+      fi
+      DEPTH="$2"; shift 2 ;;
+    --num-heads=*) NUM_HEADS="${1#*=}"; shift 1 ;;
+    --num-heads)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --num-heads requires a value." >&2
+        exit 1
+      fi
+      NUM_HEADS="$2"; shift 2 ;;
+    --mlp-ratio=*) MLP_RATIO="${1#*=}"; shift 1 ;;
+    --mlp-ratio)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --mlp-ratio requires a value." >&2
+        exit 1
+      fi
+      MLP_RATIO="$2"; shift 2 ;;
+    --num-workers=*) NUM_WORKERS="${1#*=}"; shift 1 ;;
+    --num-workers)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --num-workers requires a value." >&2
+        exit 1
+      fi
+      NUM_WORKERS="$2"; shift 2 ;;
+    --device=*) DEVICE_NAME="${1#*=}"; shift 1 ;;
+    --device)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --device requires a value." >&2
+        exit 1
+      fi
+      DEVICE_NAME="$2"; shift 2 ;;
     --gradient-checkpointing) ENABLE_CHECKPOINTING="1"; shift 1 ;;
     --use-lora) USE_LORA="1"; shift 1 ;;
     --freeze-backbone) FREEZE_BACKBONE="1"; shift 1 ;;
-    --lora-rank) LORA_RANK="$2"; shift 2 ;;
-    --lora-alpha) LORA_ALPHA="$2"; shift 2 ;;
-    --lora-dropout) LORA_DROPOUT="$2"; shift 2 ;;
-    --decoder-hidden-channels) DECODER_HIDDEN_CHANNELS="$2"; shift 2 ;;
-    --log-file) LOG_FILE="$2"; shift 2 ;;
+    --lora-rank=*) LORA_RANK="${1#*=}"; shift 1 ;;
+    --lora-rank)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --lora-rank requires a value." >&2
+        exit 1
+      fi
+      LORA_RANK="$2"; shift 2 ;;
+    --lora-alpha=*) LORA_ALPHA="${1#*=}"; shift 1 ;;
+    --lora-alpha)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --lora-alpha requires a value." >&2
+        exit 1
+      fi
+      LORA_ALPHA="$2"; shift 2 ;;
+    --lora-dropout=*) LORA_DROPOUT="${1#*=}"; shift 1 ;;
+    --lora-dropout)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --lora-dropout requires a value." >&2
+        exit 1
+      fi
+      LORA_DROPOUT="$2"; shift 2 ;;
+    --decoder-hidden-channels=*) DECODER_HIDDEN_CHANNELS="${1#*=}"; shift 1 ;;
+    --decoder-hidden-channels)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --decoder-hidden-channels requires a value." >&2
+        exit 1
+      fi
+      DECODER_HIDDEN_CHANNELS="$2"; shift 2 ;;
     --log-file=*) LOG_FILE="${1#--log-file=}"; shift 1 ;;
+    --log-file)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --log-file requires a path." >&2
+        exit 1
+      fi
+      LOG_FILE="$2"; shift 2 ;;
     --no-log) LOG_ENABLED="0"; shift 1 ;;
     --no-progress) PROGRESS_ENABLED="0"; shift 1 ;;
-    --python) PYTHON_BIN="$2"; shift 2 ;;
+    --python=*) PYTHON_BIN="${1#--python=}"; shift 1 ;;
+    --python)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --python requires a path." >&2
+        exit 1
+      fi
+      PYTHON_BIN="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac

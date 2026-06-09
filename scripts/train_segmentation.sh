@@ -90,33 +90,56 @@ setup_logging
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --python)
-      PYTHON_BIN="$2"
-      shift 2
-      ;;
     --python=*)
       PYTHON_BIN="${1#--python=}"
       shift 1
       ;;
-    --log-file)
+    --python)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --python requires a path." >&2
+        exit 1
+      fi
+      PYTHON_BIN="$2"
       shift 2
       ;;
     --log-file=*)
+      LOG_FILE="${1#--log-file=}"
       shift 1
       ;;
+    --log-file)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --log-file requires a path." >&2
+        exit 1
+      fi
+      LOG_FILE="$2"
+      shift 2
+      ;;
     --no-log)
+      LOG_ENABLED="0"
       shift 1
       ;;
     -h|--help)
       usage
       exit 0
       ;;
+    --training-name=*)
+      TRAINING_NAME="${1#*=}"
+      shift 1
+      ;;
     --training-name)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --training-name requires a value." >&2
+        exit 1
+      fi
       TRAINING_NAME="$2"
       shift 2
       ;;
     *)
-      FORWARD_ARGS+=("$1")
+      if [[ -z "${TRAINING_NAME}" && "$1" != --* ]]; then
+        TRAINING_NAME="$1"
+      else
+        FORWARD_ARGS+=("$1")
+      fi
       shift 1
       ;;
   esac

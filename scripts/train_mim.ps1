@@ -38,26 +38,26 @@ $index = 0
 while ($index -lt $originalArgs.Count) {
     $token = $originalArgs[$index]
     switch -Regex ($token) {
+        '^--python=(.*)$' {
+            $pythonExe = $Matches[1]
+            $index += 1
+            continue
+        }
         '^--python$' {
-            if ($index + 1 -ge $originalArgs.Count) { throw "--python requires a path." }
+            if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--python requires a path." }
             $pythonExe = $originalArgs[$index + 1]
             $index += 2
             continue
         }
-        '^--python=' {
-            $pythonExe = $token.Substring("--python=".Length)
+        '^--log-file=(.*)$' {
+            $logFile = Resolve-UserPath -BaseDir $invocationCwd -RawPath $Matches[1]
             $index += 1
             continue
         }
         '^--log-file$' {
-            if ($index + 1 -ge $originalArgs.Count) { throw "--log-file requires a path." }
+            if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--log-file requires a path." }
             $logFile = Resolve-UserPath -BaseDir $invocationCwd -RawPath $originalArgs[$index + 1]
             $index += 2
-            continue
-        }
-        '^--log-file=' {
-            $logFile = Resolve-UserPath -BaseDir $invocationCwd -RawPath $token.Substring("--log-file=".Length)
-            $index += 1
             continue
         }
         '^--no-log$' {
@@ -70,14 +70,24 @@ while ($index -lt $originalArgs.Count) {
             $index += 1
             continue
         }
+        '^--data-root=(.*)$' {
+            $dataRoot = $Matches[1]
+            $index += 1
+            continue
+        }
         '^--data-root$' {
-            if ($index + 1 -ge $originalArgs.Count) { throw "--data-root requires a path." }
+            if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--data-root requires a path." }
             $dataRoot = $originalArgs[$index + 1]
             $index += 2
             continue
         }
+        '^--output-dir=(.*)$' {
+            $outputDir = $Matches[1]
+            $index += 1
+            continue
+        }
         '^--output-dir$' {
-            if ($index + 1 -ge $originalArgs.Count) { throw "--output-dir requires a path." }
+            if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--output-dir requires a path." }
             $outputDir = $originalArgs[$index + 1]
             $index += 2
             continue

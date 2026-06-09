@@ -146,41 +146,101 @@ setup_logging
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --input-dir=*)
+      INPUT_DIR="${1#*=}"
+      shift 1
+      ;;
     --input-dir)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --input-dir requires a path." >&2
+        exit 1
+      fi
       INPUT_DIR="$2"
       shift 2
       ;;
+    --output-dir=*)
+      OUTPUT_DIR="${1#*=}"
+      shift 1
+      ;;
     --output-dir)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --output-dir requires a path." >&2
+        exit 1
+      fi
       OUTPUT_DIR="$2"
       shift 2
       ;;
+    --tile-size=*)
+      TILE_SIZE="${1#*=}"
+      shift 1
+      ;;
     --tile-size)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --tile-size requires a value." >&2
+        exit 1
+      fi
       TILE_SIZE="$2"
       shift 2
       ;;
+    --stride=*)
+      STRIDE="${1#*=}"
+      shift 1
+      ;;
     --stride)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --stride requires a value." >&2
+        exit 1
+      fi
       STRIDE="$2"
       shift 2
       ;;
+    --format=*)
+      FORMAT="${1#*=}"
+      shift 1
+      ;;
     --format)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --format requires a value." >&2
+        exit 1
+      fi
       FORMAT="$2"
       shift 2
       ;;
+    --jpeg-quality=*)
+      JPEG_QUALITY="${1#*=}"
+      shift 1
+      ;;
     --jpeg-quality)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --jpeg-quality requires a value." >&2
+        exit 1
+      fi
       JPEG_QUALITY="$2"
       shift 2
       ;;
-    --workers)
-      WORKERS="$2"
-      shift 2
+    --workers=*)
+      WORKERS="${1#*=}"
+      shift 1
       ;;
-    --log-file)
-      LOG_FILE="$2"
+    --workers)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --workers requires a value." >&2
+        exit 1
+      fi
+      WORKERS="$2"
       shift 2
       ;;
     --log-file=*)
       LOG_FILE="${1#--log-file=}"
       shift 1
+      ;;
+    --log-file)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --log-file requires a path." >&2
+        exit 1
+      fi
+      LOG_FILE="$2"
+      shift 2
       ;;
     --no-log)
       LOG_ENABLED="0"
@@ -190,7 +250,15 @@ while [[ $# -gt 0 ]]; do
       PROGRESS_ENABLED="0"
       shift 1
       ;;
+    --python=*)
+      PYTHON_BIN="${1#--python=}"
+      shift 1
+      ;;
     --python)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --python requires a path." >&2
+        exit 1
+      fi
       PYTHON_BIN="$2"
       shift 2
       ;;

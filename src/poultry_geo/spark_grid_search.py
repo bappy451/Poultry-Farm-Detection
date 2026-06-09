@@ -10,14 +10,14 @@ import torch
 import yaml
 
 from poultry_geo.checkpoint_manager import StateManager, normalize_training_name
-from poultry_geo.grid_search import load_grid_search_config, expand_grid_search_configs, resolve_runtime_device
+from poultry_geo.ssl_grid_search import load_ssl_grid_search_config, expand_ssl_grid_search_configs, build_scheduler, get_system_info
+from poultry_geo.grid_search import resolve_runtime_device
+from poultry_geo.optimizers import build_optimizer
 import poultry_geo.naip_data as naip_data
 import poultry_geo.spark as spark
 import poultry_geo.spark_models as spark_models
 import poultry_geo.train_spark_ssl as train_spark_ssl
 import poultry_geo.models as models
-from poultry_geo.ssl_grid_search import build_scheduler, get_system_info
-from poultry_geo.optimizers import build_optimizer
 
 
 def run_stateful_spark_grid_search(
@@ -27,8 +27,8 @@ def run_stateful_spark_grid_search(
     root_dir: str | Path = "trained_models",
     progress_callback: Any | None = None,
 ) -> pd.DataFrame:
-    config = load_grid_search_config(config_path)
-    experiments = expand_grid_search_configs(config)
+    config = load_ssl_grid_search_config(config_path)
+    experiments = expand_ssl_grid_search_configs(config)
     total_epochs = int(epochs if epochs is not None else config["runtime"].get("epochs", 1))
 
     normalized_training_name = normalize_training_name(training_name)
@@ -50,7 +50,7 @@ def run_stateful_spark_grid_search(
         grid = experiment["grid"]
         signature = json.dumps(experiment, sort_keys=True, separators=(",", ":"))
         experiment_id = hashlib.sha1(signature.encode("utf-8")).hexdigest()[:12]
-        backbone_type = str(grid["backbone"])
+        backbone_type = str(grid["model_name"])
         precision_str = str(grid["precision"]).strip().lower()
         folder_name = f"{experiment_id}_{backbone_type}_{precision_str}"
         
@@ -81,7 +81,7 @@ def run_stateful_spark_grid_search(
             precision = precision_str
 
             # Model setup
-            in_channels = int(experiment["data"].get("channels", 3))
+            in_channels = int(experiment["data"].get("n_channels", 3))
             adapter = models.BandAdapter(in_channels=in_channels, out_channels=3)
             transformer = spark.SparseTransformer(
                 adapter=adapter, 
@@ -126,7 +126,7 @@ def run_stateful_spark_grid_search(
                 backbone_type=backbone_type,
                 precision=precision.upper(),
                 lr=float(grid["learning_rate"]),
-                batch_size=int(grid["batch_size"])
+                batch_size=int(experiment["data"].get("batch_size", 8))
             )
 
             print(f"\n--- Starting SparK Experiment: {experiment_id} ---")
@@ -135,12 +135,12 @@ def run_stateful_spark_grid_search(
             print(f"Directory: {manager.run_dir}")
 
             train_loader, _ = naip_data.get_dataloaders(
-                experiment["data"]["root"],
-                batch_size=int(grid["batch_size"]),
-                crop_size=int(experiment["data"].get("crop_size", 224)),
+                experiment["data"]["image_dir"],
+                batch_size=int(experiment["data"].get("batch_size", 8)),
+                crop_size=int(experiment["data"].get("image_size", 224)),
                 channels=in_channels,
                 precision=precision,
-                num_workers=int(experiment["runtime"].get("num_workers", 4)),
+                num_workers=int(experiment["data"].get("num_workers", 4)),
             )
 
             for epoch_index in range(run_state.start_epoch, total_epochs):

@@ -94,32 +94,59 @@ setup_logging
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --python)
-      PYTHON_BIN="$2"
-      shift 2
-      ;;
     --python=*)
       PYTHON_BIN="${1#--python=}"
       shift 1
       ;;
-    --log-file)
+    --python)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --python requires a path." >&2
+        exit 1
+      fi
+      PYTHON_BIN="$2"
       shift 2
       ;;
     --log-file=*)
+      LOG_FILE="${1#--log-file=}"
       shift 1
       ;;
+    --log-file)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --log-file requires a path." >&2
+        exit 1
+      fi
+      LOG_FILE="$2"
+      shift 2
+      ;;
     --no-log)
+      LOG_ENABLED="0"
       shift 1
       ;;
     -h|--help)
       usage
       exit 0
       ;;
+    --data-root=*)
+      DATA_ROOT="${1#*=}"
+      shift 1
+      ;;
     --data-root)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --data-root requires a path." >&2
+        exit 1
+      fi
       DATA_ROOT="$2"
       shift 2
       ;;
+    --output-dir=*)
+      OUTPUT_DIR="${1#*=}"
+      shift 1
+      ;;
     --output-dir)
+      if [[ -z "${2:-}" || "$2" == --* ]]; then
+        echo "Error: --output-dir requires a path." >&2
+        exit 1
+      fi
       OUTPUT_DIR="$2"
       shift 2
       ;;

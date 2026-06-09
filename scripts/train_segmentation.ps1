@@ -34,26 +34,26 @@ $index = 0
 while ($index -lt $originalArgs.Count) {
     $token = $originalArgs[$index]
     switch -Regex ($token) {
+        '^--python=(.*)$' {
+            $pythonExe = $Matches[1]
+            $index += 1
+            continue
+        }
         '^--python$' {
-            if ($index + 1 -ge $originalArgs.Count) { throw "--python requires a path." }
+            if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--python requires a path." }
             $pythonExe = $originalArgs[$index + 1]
             $index += 2
             continue
         }
-        '^--python=' {
-            $pythonExe = $token.Substring("--python=".Length)
+        '^--log-file=(.*)$' {
+            $logFile = Resolve-UserPath -BaseDir $invocationCwd -RawPath $Matches[1]
             $index += 1
             continue
         }
         '^--log-file$' {
-            if ($index + 1 -ge $originalArgs.Count) { throw "--log-file requires a path." }
+            if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--log-file requires a path." }
             $logFile = Resolve-UserPath -BaseDir $invocationCwd -RawPath $originalArgs[$index + 1]
             $index += 2
-            continue
-        }
-        '^--log-file=' {
-            $logFile = Resolve-UserPath -BaseDir $invocationCwd -RawPath $token.Substring("--log-file=".Length)
-            $index += 1
             continue
         }
         '^--no-log$' {
@@ -66,14 +66,24 @@ while ($index -lt $originalArgs.Count) {
             $index += 1
             continue
         }
+        '^--training-name=(.*)$' {
+            $trainingName = $Matches[1]
+            $index += 1
+            continue
+        }
         '^--training-name$' {
-            if ($index + 1 -ge $originalArgs.Count) { throw "--training-name requires a name." }
+            if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--training-name requires a value." }
             $trainingName = $originalArgs[$index + 1]
             $index += 2
             continue
         }
         default {
-            $forwardArgs.Add($token) | Out-Null
+            if ([string]::IsNullOrWhiteSpace($trainingName) -and -not $token.StartsWith('-')) {
+                $trainingName = $token
+            }
+            else {
+                $forwardArgs.Add($token) | Out-Null
+            }
             $index += 1
             continue
         }

@@ -82,27 +82,27 @@ while ($index -lt $originalArgs.Count) {
         continue
     }
     if ($token -eq "--log-file") {
-        if ($index + 1 -ge $originalArgs.Count) {
+        if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) {
             throw "--log-file requires a path."
         }
         $logFile = Resolve-UserPath -BaseDir $invocationCwd -RawPath $originalArgs[$index + 1]
         $index += 2
         continue
     }
-    if ($token.StartsWith("--log-file=")) {
+    if ($token -like "--log-file=*") {
         $logFile = Resolve-UserPath -BaseDir $invocationCwd -RawPath $token.Substring("--log-file=".Length)
         $index += 1
         continue
     }
     if ($token -eq "--python") {
-        if ($index + 1 -ge $originalArgs.Count) {
+        if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) {
             throw "--python requires a path."
         }
         $pythonExe = $originalArgs[$index + 1]
         $index += 2
         continue
     }
-    if ($token.StartsWith("--python=")) {
+    if ($token -like "--python=*") {
         $pythonExe = $token.Substring("--python=".Length)
         $index += 1
         continue
@@ -122,62 +122,86 @@ try {
     while ($index -lt $originalArgs.Count) {
         $token = $originalArgs[$index]
         switch -Regex ($token) {
+            '^--data-root=(.*)$' { $dataRoot = $Matches[1]; $index += 1; continue }
             '^--data-root$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--data-root requires a path." }
                 $dataRoot = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--batch-size=(.*)$' { $batchSize = $Matches[1]; $index += 1; continue }
             '^--batch-size$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--batch-size requires a value." }
                 $batchSize = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--crop-size=(.*)$' { $cropSize = $Matches[1]; $index += 1; continue }
             '^--crop-size$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--crop-size requires a value." }
                 $cropSize = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--channels=(.*)$' { $channels = $Matches[1]; $index += 1; continue }
             '^--channels$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--channels requires a value." }
                 $channels = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--precision=(.*)$' { $precision = $Matches[1]; $index += 1; continue }
             '^--precision$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--precision requires a value." }
                 $precision = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--patch-size=(.*)$' { $patchSize = $Matches[1]; $index += 1; continue }
             '^--patch-size$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--patch-size requires a value." }
                 $patchSize = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--embed-dim=(.*)$' { $embedDim = $Matches[1]; $index += 1; continue }
             '^--embed-dim$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--embed-dim requires a value." }
                 $embedDim = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--depth=(.*)$' { $depth = $Matches[1]; $index += 1; continue }
             '^--depth$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--depth requires a value." }
                 $depth = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--num-heads=(.*)$' { $numHeads = $Matches[1]; $index += 1; continue }
             '^--num-heads$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--num-heads requires a value." }
                 $numHeads = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--mlp-ratio=(.*)$' { $mlpRatio = $Matches[1]; $index += 1; continue }
             '^--mlp-ratio$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--mlp-ratio requires a value." }
                 $mlpRatio = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--num-workers=(.*)$' { $numWorkers = $Matches[1]; $index += 1; continue }
             '^--num-workers$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--num-workers requires a value." }
                 $numWorkers = $originalArgs[$index + 1]
                 $index += 2
                 continue
             }
+            '^--device=(.*)$' { $deviceName = $Matches[1]; $index += 1; continue }
             '^--device$' {
+                if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) { throw "--device requires a value." }
                 $deviceName = $originalArgs[$index + 1]
                 $index += 2
                 continue

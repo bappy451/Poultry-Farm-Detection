@@ -46,27 +46,27 @@ while ($index -lt $originalArgs.Count) {
         continue
     }
     if ($token -eq "--log-file") {
-        if ($index + 1 -ge $originalArgs.Count) {
+        if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) {
             throw "--log-file requires a path."
         }
         $logFile = Resolve-UserPath -BaseDir $invocationCwd -RawPath $originalArgs[$index + 1]
         $index += 2
         continue
     }
-    if ($token.StartsWith("--log-file=")) {
+    if ($token -like "--log-file=*") {
         $logFile = Resolve-UserPath -BaseDir $invocationCwd -RawPath $token.Substring("--log-file=".Length)
         $index += 1
         continue
     }
     if ($token -eq "--python") {
-        if ($index + 1 -ge $originalArgs.Count) {
+        if ($index + 1 -ge $originalArgs.Count -or $originalArgs[$index + 1].StartsWith('-')) {
             throw "--python requires a path."
         }
         $pythonExe = $originalArgs[$index + 1]
         $index += 2
         continue
     }
-    if ($token.StartsWith("--python=")) {
+    if ($token -like "--python=*") {
         $pythonExe = $token.Substring("--python=".Length)
         $index += 1
         continue
@@ -91,20 +91,20 @@ try {
                 $index += 1
                 continue
             }
+            '^--log-file=(.*)$' {
+                $index += 1
+                continue
+            }
             '^--log-file$' {
                 $index += 2
                 continue
             }
-            '^--log-file=' {
+            '^--python=(.*)$' {
                 $index += 1
                 continue
             }
             '^--python$' {
                 $index += 2
-                continue
-            }
-            '^--python=' {
-                $index += 1
                 continue
             }
             default {

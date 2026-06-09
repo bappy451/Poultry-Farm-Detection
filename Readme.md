@@ -166,6 +166,21 @@ To visualize the loss curve for a specific experiment ID:
 
 ---
 
+## 🛑 Troubleshooting & Known Issues
+
+### 1. `command.log` File Lock (Windows)
+If a background training process crashes or is forcefully terminated, PowerShell may leave a write-lock on the `command.log` file. You will see an error like: *The process cannot access the file because it is being used by another process.*
+**Fix:** Find and terminate any orphaned `pwsh.exe` or `python.exe` processes, then delete the `command.log` file to reset the state.
+
+### 2. YAML Schema Drift
+When running grid searches, ensure your configuration files strictly adhere to the schema expected by the pipeline. For example, use `image_dir` instead of `root`, and `image_size` instead of `crop_size`. If you encounter a `ValueError: config.yaml is missing data.image_dir`, double-check your parameter names against the provided examples in `ssl_config.yaml`.
+
+### 3. Command Line Argument Parsing
+When passing paths or string values to the wrapper scripts, it is highly recommended to use the equals sign (`=`) syntax to prevent parsing errors due to line breaks or spaces in PowerShell.
+**Example:** `--training-name="my-run"` instead of `--training-name "my-run"`.
+
+---
+
 ## 💻 CLI Reference Guide
 
 The primary entry point is the `poultry-geo` command. 
