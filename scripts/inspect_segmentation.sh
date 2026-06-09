@@ -74,6 +74,9 @@ EOF
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+. "${SCRIPT_DIR}/common.sh"
+
 DEFAULT_LOG_FILE="${CODE_DIR}/command.log"
 INVOCATION_CWD="$(pwd)"
 ORIGINAL_ARGS=("$@")
@@ -198,34 +201,12 @@ if [[ -z "${DATA_ROOT}" ]]; then
   exit 2
 fi
 
-if [[ -z "${PYTHON_BIN}" ]]; then
-  if [[ -x "${CODE_DIR}/.venv/bin/python" ]]; then
-    PYTHON_BIN="${CODE_DIR}/.venv/bin/python"
-  elif [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/python" ]]; then
-    PYTHON_BIN="${CONDA_PREFIX}/bin/python"
-  elif [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/python.exe" ]]; then
-    PYTHON_BIN="${CONDA_PREFIX}/python.exe"
-  elif command -v conda >/dev/null 2>&1; then
-    CONDA_BASE="$(conda info --base 2>/dev/null | head -n 1 || true)"
-    if [[ -n "${CONDA_BASE}" && -x "${CONDA_BASE}/envs/poultry-geo/bin/python" ]]; then
-      PYTHON_BIN="${CONDA_BASE}/envs/poultry-geo/bin/python"
-    elif [[ -n "${CONDA_BASE}" && -x "${CONDA_BASE}/envs/poultry-geo/python.exe" ]]; then
-      PYTHON_BIN="${CONDA_BASE}/envs/poultry-geo/python.exe"
-    fi
-  fi
-
-  if [[ -z "${PYTHON_BIN}" ]] && command -v python >/dev/null 2>&1; then
-    PYTHON_BIN="$(command -v python)"
-  fi
-
-  if [[ -z "${PYTHON_BIN}" ]]; then
-    PYTHON_BIN="python3"
-  fi
-fi
+PYTHON_BIN=$(resolve_python "${PYTHON_BIN}" "${CODE_DIR}")
 
 COMMAND=(
   "${PYTHON_BIN}"
   "${CODE_DIR}/scripts/poultry_geo.py"
+  --no-log
   inspect-segmentation
   "${DATA_ROOT}"
   --batch-size
@@ -254,7 +235,6 @@ COMMAND=(
   "${LORA_DROPOUT}"
   --decoder-hidden-channels
   "${DECODER_HIDDEN_CHANNELS}"
-  --no-log
 )
 
 if [[ -n "${CHANNELS}" ]]; then

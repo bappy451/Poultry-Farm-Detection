@@ -66,6 +66,9 @@ EOF
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+. "${SCRIPT_DIR}/common.sh"
+
 DEFAULT_LOG_FILE="${CODE_DIR}/command.log"
 INVOCATION_CWD="$(pwd)"
 ORIGINAL_ARGS=("$@")
@@ -209,13 +212,7 @@ if [[ -z "${INPUT_DIR}" || -z "${OUTPUT_DIR}" ]]; then
   exit 2
 fi
 
-if [[ -z "${PYTHON_BIN}" ]]; then
-  if [[ -x "${CODE_DIR}/.venv/bin/python" ]]; then
-    PYTHON_BIN="${CODE_DIR}/.venv/bin/python"
-  else
-    PYTHON_BIN="python3"
-  fi
-fi
+PYTHON_BIN=$(resolve_python "${PYTHON_BIN}" "${CODE_DIR}")
 
 COMMAND=(
   "${PYTHON_BIN}"

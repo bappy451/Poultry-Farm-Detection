@@ -18,6 +18,8 @@ EOF
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+. "${SCRIPT_DIR}/common.sh"
 DEFAULT_LOG_FILE="${CODE_DIR}/command.log"
 INVOCATION_CWD="$(pwd)"
 ORIGINAL_ARGS=("$@")
@@ -131,19 +133,7 @@ if [[ -z "${TRAINING_NAME}" ]]; then
   exit 2
 fi
 
-if [[ -z "${PYTHON_BIN}" ]]; then
-  if [[ -x "${CODE_DIR}/.venv/bin/python" ]]; then
-    PYTHON_BIN="${CODE_DIR}/.venv/bin/python"
-  elif [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/python" ]]; then
-    PYTHON_BIN="${CONDA_PREFIX}/bin/python"
-  elif [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/python.exe" ]]; then
-    PYTHON_BIN="${CONDA_PREFIX}/python.exe"
-  elif command -v python >/dev/null 2>&1; then
-    PYTHON_BIN="$(command -v python)"
-  else
-    PYTHON_BIN="python3"
-  fi
-fi
+PYTHON_BIN=$(resolve_python "${PYTHON_BIN}" "${CODE_DIR}")
 
 COMMAND=(
   "${PYTHON_BIN}"

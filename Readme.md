@@ -128,8 +128,9 @@ While you can run the application directly using the Python module (`python -m p
 | `train_ssl_grid.*`| Stateful SSL (MIM) grid search. | `./scripts/train_ssl_grid.sh` | `.\scripts\train_ssl_grid.cmd` |
 | `plot_ssl_grid.*` | Summary plots for grid search. | `./scripts/plot_ssl_grid.sh` | `.\scripts\plot_ssl_grid.cmd` |
 | `plot_run.*` | Loss curves for a specific run. | `./scripts/plot_run.sh` | `.\scripts\plot_run.cmd` |
+| `spark_grid_train.*` | Stateful SparK SSL grid search. | `./scripts/spark_grid_train.sh` | `.\scripts\spark_grid_train.cmd` |
 | `train_mim.*` | Masked Image Modeling SSL. | `./scripts/train_mim.sh` | `.\scripts\train_mim.cmd` |
-| `train_spark.*` | SparK SSL pretraining. | `./scripts/train_spark.sh` | `.\scripts\train_spark.cmd` |
+| `train_spark.*` | Single SparK SSL training run. | `./scripts/train_spark.sh` | `.\scripts\train_spark.cmd` |
 
 **Important Windows Note:** Use the `.cmd` scripts from the Command Prompt or PowerShell, as they handle invoking PowerShell with `ExecutionPolicy Bypass` automatically.
 
@@ -140,22 +141,28 @@ While you can run the application directly using the Python module (`python -m p
 This pipeline supports automated, resume-aware hyperparameter grid searches for Self-Supervised Learning (SSL).
 
 ### 1. Start/Resume a Grid Search
-This command will iterate through all permutations in your config, saving each experiment in its own folder under `trained_models/<NAME>`. If the process is stopped, rerunning it will skip completed runs and resume the interrupted one.
 
-*   **Windows:** `.\scripts\train_ssl_grid.cmd --training-name "mim-publication-run" --config ssl_config.yaml`
-*   **Linux:** `./scripts/train_ssl_grid.sh --training-name "mim-publication-run" --config ssl_config.yaml`
+You can choose between **MIM (Vision Transformers)** or **SparK (Hierarchical CNNs)**.
+
+#### Option A: MIM (MAE-style ViT)
+*   **Windows:** `.\scripts\train_ssl_grid.cmd --training-name "mim-run" --config ssl_config.yaml`
+*   **Linux:** `./scripts/train_ssl_grid.sh --training-name "mim-run" --config ssl_config.yaml`
+
+#### Option B: SparK (Sparse Masked Modeling)
+*   **Windows:** `.\scripts\spark_grid_train.cmd --training-name "spark-run" --config configs/spark_grid_search.yaml`
+*   **Linux:** `./scripts/spark_grid_train.sh --training-name "spark-run" --config configs/spark_grid_search.yaml`
 
 ### 2. Plot the Summary Results
-Once the grid search finishes (or while it's in progress), generate a summary heatmap/bar chart of all experiments:
+Generate a summary heatmap/bar chart of all experiments in a campaign:
 
-*   **Windows:** `.\scripts\plot_ssl_grid.cmd --training-name "mim-publication-run"`
-*   **Linux:** `./scripts/plot_ssl_grid.sh --training-name "mim-publication-run"`
+*   **Windows:** `.\scripts\plot_ssl_grid.cmd --training-name "mim-run"`
+*   **Linux:** `./scripts/plot_ssl_grid.sh --training-name "mim-run"`
 
 ### 3. Plot a Specific Run's Convergence
-To visualize the loss curve for the best performing experiment:
+To visualize the loss curve for a specific experiment ID:
 
-*   **Windows:** `.\scripts\plot_run.cmd "trained_models/mim-publication-run/<EXPERIMENT_ID_FOLDER>"`
-*   **Linux:** `./scripts/plot_run.sh "trained_models/mim-publication-run/<EXPERIMENT_ID_FOLDER>"`
+*   **Windows:** `.\scripts\plot_run.cmd "trained_models/mim-run/<FOLDER>"`
+*   **Linux:** `./scripts/plot_run.sh "trained_models/mim-run/<FOLDER>"`
 
 ---
 
