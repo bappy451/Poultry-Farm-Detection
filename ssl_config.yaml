@@ -1,0 +1,33 @@
+data:
+  image_dir: C:/Users/mza0288/Documents/Poultry-Farm-Detection/tmp/test_jpg
+  image_size: 224
+  n_channels: 3
+  batch_size: 16
+  num_workers: 4
+
+runtime:
+  device: auto
+  seed: 27
+  output_dir: ./runs/ssl-grid-search
+  epochs: 50
+
+grid_search:
+  embed_dim:
+    - 192   # Tiny
+    - 384   # Small
+  depth:
+    - 8     # Tiny
+    - 12    # Small
+  num_heads:
+    - 6
+  mask_ratio:
+    - 0.75
+  optimizer:
+    - adamw
+  precision:
+    - bf16
+  learning_rate:
+    - 0.0001
+    - 0.0005
+  weight_decay:
+    - 0.05
