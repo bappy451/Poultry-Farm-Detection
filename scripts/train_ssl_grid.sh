@@ -9,10 +9,12 @@ Usage:
 
 What it does:
   - runs stateful resume-aware SSL (Masked Image Modeling) grid search training.
-  - uses the `ssl-grid-train` CLI command.
+
+Options:
+  --verbose             Enable rich multi-line progress reporting with live metrics.
 
 Examples:
-  ./scripts/train_ssl_grid.sh --training-name my-ssl-grid --config ssl_config.yaml --epochs 100
+  ./scripts/train_ssl_grid.sh --training-name my-ssl-grid --config ssl_config.yaml --epochs 100 --verbose
 EOF
 }
 

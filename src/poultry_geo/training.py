@@ -130,27 +130,41 @@ class SSLTrainer:
         if sampler is not None and hasattr(sampler, "set_epoch"):
             sampler.set_epoch(epoch_index)
 
-        losses: list[float] = []
+        total_loss = 0.0
+        total_batches = 0
         num_batches = len(self.train_loader)
+        last_loss = 0.0
+
         for step_index, batch in enumerate(self.train_loader, start=1):
-            metrics = self.train_step(batch)
-            losses.append(metrics["loss"])
-            
             if self.progress_callback is not None:
                 total_work = total_epochs * num_batches
-                completed_work = (epoch_index * num_batches) + step_index
-                detail = f"ep {epoch_index+1}/{total_epochs} batch {step_index}/{num_batches} loss={metrics['loss']:.4f}"
-                self.progress_callback(completed_work, total_work, detail)
+                completed_work = (epoch_index * num_batches) + step_index - 1
+                avg_loss = total_loss / max(total_batches, 1)
+                lr = self.optimizer.param_groups[0]["lr"]
+                
+                detail = (
+                    f"ep {epoch_index+1}/{total_epochs} | "
+                    f"batch {step_index}/{num_batches} | "
+                    f"loss {last_loss:.4f} (avg {avg_loss:.4f}) | "
+                    f"lr {lr:.6f}"
+                )
+                self.progress_callback(completed_work, total_work, detail=detail)
+
+            metrics = self.train_step(batch)
+            current_loss = metrics["loss"]
+            total_loss += current_loss
+            total_batches += 1
+            last_loss = current_loss
 
             if step_index % self.log_every == 0:
                 print(
                     f"train-mim epoch={epoch_index + 1} step={step_index}/{num_batches} "
-                    f"loss={metrics['loss']:.6f}"
+                    f"loss={current_loss:.6f}"
                 )
 
         return {
-            "loss": float(sum(losses) / len(losses)) if losses else float("nan"),
-            "batches": len(losses),
+            "loss": float(total_loss / total_batches) if total_batches > 0 else float("nan"),
+            "batches": total_batches,
         }
 
     def evaluate(self, epoch_index: int) -> dict[str, float]:

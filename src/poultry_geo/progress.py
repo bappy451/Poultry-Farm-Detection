@@ -20,6 +20,7 @@ class ProgressState:
     completed: int = 0
     total: int | None = None
     detail: str = ""
+    verbose: bool = False
 
 
 class CommandProgress:
@@ -31,8 +32,9 @@ class CommandProgress:
         *,
         stream: TextIO | None = None,
         refresh_seconds: float = DEFAULT_REFRESH_SECONDS,
+        verbose: bool = False,
     ) -> None:
-        self.state = ProgressState(label=label)
+        self.state = ProgressState(label=label, verbose=verbose)
         self.stream = stream or sys.stdout
         self._live_stream = self._resolve_live_stream(self.stream)
         self.refresh_seconds = refresh_seconds
@@ -42,6 +44,7 @@ class CommandProgress:
         self._thread: threading.Thread | None = None
         self._pulse = 0
         self._last_width = 0
+        self._last_lines = 0
 
     def start(self) -> None:
         self._write(self._render(), log_event=True)
@@ -122,24 +125,45 @@ class CommandProgress:
             percent = "working"
             count = ""
             eta = " | ETA --"
-        detail = f" | {state.detail}" if state.detail else ""
-        return (
+        
+        main_line = (
             f"{state.label:<20} [{bar}] {percent:>7}"
-            f" | elapsed {_format_elapsed(elapsed)}{eta}{count}{detail}"
+            f" | elapsed {_format_elapsed(elapsed)}{eta}{count}"
         )
 
-    def _write(self, line: str, *, log_event: bool, final: bool = False) -> None:
-        rendered = self._fit_terminal(f"[progress] {line}")
-        padded = rendered.ljust(self._last_width)
-        self._last_width = 0 if final else len(rendered)
-        progress_writer = getattr(self.stream, "write_progress", None)
-        if progress_writer is not None:
-            progress_writer(padded, log_event=log_event, final=final)
-            return
-        self._live_stream.write("\r" + padded + ("\n" if final else ""))
+        if state.verbose and state.detail:
+            # If verbose, we might want to split detail into multiple lines or show it prominently
+            # For now, let's keep it simple but ensure it's not truncated if we can help it.
+            return f"{main_line}\n  > {state.detail}"
+        
+        detail = f" | {state.detail}" if state.detail else ""
+        return f"{main_line}{detail}"
+
+    def _write(self, content: str, *, log_event: bool, final: bool = False) -> None:
+        lines = content.split("\n")
+        rendered_lines = [self._fit_terminal(f"[progress] {line}") for line in lines]
+        
+        # Move cursor up if we wrote multiple lines last time
+        if self._last_lines > 1:
+            self._live_stream.write(f"\x1b[{self._last_lines - 1}A")
+        
+        # Clear lines and write new content
+        for i, line in enumerate(rendered_lines):
+            self._live_stream.write("\r\x1b[K" + line)
+            if i < len(rendered_lines) - 1:
+                self._live_stream.write("\n")
+        
+        if final:
+            self._live_stream.write("\n")
+            self._last_lines = 0
+        else:
+            self._live_stream.write("\r")
+            self._last_lines = len(rendered_lines)
+            
         self._live_stream.flush()
+        
         if log_event and self._live_stream is not self.stream:
-            self._append_wrapper_log(rendered)
+            self._append_wrapper_log("\n".join(rendered_lines))
 
     @staticmethod
     def _fit_terminal(line: str) -> str:
@@ -188,6 +212,7 @@ def command_progress_context(
         _command_label(args),
         stream=stream,
         refresh_seconds=refresh_seconds,
+        verbose="--verbose" in args,
     )
     progress.start()
     try:

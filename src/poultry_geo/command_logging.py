@@ -97,6 +97,12 @@ def add_logging_arguments(parser: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
         help="Disable command progress output for this run.",
     )
+    group.add_argument(
+        "--verbose",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Enable more detailed (verbose) progress reporting and logging.",
+    )
 
 
 def resolve_logging_config(argv: Sequence[str] | None) -> LoggingConfig:

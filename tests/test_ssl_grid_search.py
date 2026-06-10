@@ -31,10 +31,12 @@ def test_load_ssl_grid_search_config(tmp_path: Path) -> None:
             "use_lora": [False],
             "freeze_backbone": [False],
             "mask_ratio": [0.75],
+            "drop_path_rate": [0.1],
             "optimizer": ["adamw"],
             "precision": ["fp32"],
             "learning_rate": [0.0001],
             "weight_decay": [0.05],
+            "warmup_epochs": [5],
         }
     }
     config_path = tmp_path / "ssl_config.yaml"
@@ -54,10 +56,12 @@ def test_expand_ssl_grid_search_configs() -> None:
             "use_lora": [False, True],
             "freeze_backbone": [False],
             "mask_ratio": [0.75],
+            "drop_path_rate": [0.1],
             "optimizer": ["adamw"],
             "precision": ["fp32"],
             "learning_rate": [0.0001],
             "weight_decay": [0.05],
+            "warmup_epochs": [5],
         }
     }
     experiments = expand_ssl_grid_search_configs(config)

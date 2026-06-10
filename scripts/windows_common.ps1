@@ -45,7 +45,17 @@ function Write-ProjectLogLine {
         [string]$Line
     )
 
-    $Line | Tee-Object -FilePath $LogFile -Append | Out-Host
+    try {
+        $Line | Tee-Object -FilePath $LogFile -Append | Out-Host
+    }
+    catch [System.IO.IOException] {
+        $Line | Out-Host
+        Write-Warning "[logging] Could not write to $LogFile (file locked). Continuing without log file entry."
+    }
+    catch {
+        $Line | Out-Host
+        throw $_
+    }
 }
 
 function Start-ProjectLog {
@@ -148,9 +158,17 @@ function Invoke-ProjectNativeCommand {
             }
             $progressEventLog = $LogFile + ".progress." + $PID + ".tmp"
             $env:POULTRY_PROGRESS_LOG = $progressEventLog
-            & cmd.exe /d /c $commandLine |
-                Tee-Object -FilePath $LogFile -Append |
-                Out-Host
+            
+            # Try to use Tee-Object, fall back to direct output if locked
+            try {
+                & cmd.exe /d /c $commandLine |
+                    Tee-Object -FilePath $LogFile -Append |
+                    Out-Host
+            }
+            catch [System.IO.IOException] {
+                & cmd.exe /d /c $commandLine | Out-Host
+                Write-Warning "[logging] Could not write command output to $LogFile (file locked)."
+            }
         }
         else {
             & cmd.exe /d /c $commandLine | Out-Host

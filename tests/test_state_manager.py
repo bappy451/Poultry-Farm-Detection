@@ -267,8 +267,8 @@ def test_state_manager_appends_metrics_csv_without_overwrite(tmp_path: Path) -> 
     assert second_bytes.startswith(first_bytes)
     rows = list(csv.DictReader(manager.metrics_path.open("r", encoding="utf-8", newline="")))
     assert [int(row["epoch"]) for row in rows] == [1, 2]
-    assert json.loads(rows[0]["evaluation_matrix_json"]) == [[8, 1], [2, 9]]
-    assert json.loads(rows[1]["evaluation_matrix_json"]) == [[9, 0], [1, 10]]
+    assert json.loads(rows[0]["evaluation_matrix"]) == [[8, 1], [2, 9]]
+    assert json.loads(rows[1]["evaluation_matrix"]) == [[9, 0], [1, 10]]
 
 
 def test_run_stateful_grid_search_writes_and_resumes_metrics(
@@ -339,8 +339,8 @@ def test_run_stateful_grid_search_writes_and_resumes_metrics(
     assert list(metrics["epoch"]) == [1, 2]
     assert all(np.isfinite(metrics["loss"]))
     assert all(np.isfinite(metrics["accuracy"]))
-    assert json.loads(metrics.loc[0, "evaluation_matrix_json"]) != []
-    assert json.loads(metrics.loc[1, "evaluation_matrix_json"]) != []
+    assert json.loads(metrics.loc[0, "evaluation_matrix"]) != []
+    assert json.loads(metrics.loc[1, "evaluation_matrix"]) != []
     summary = pd.read_csv(summary_csv)
     assert len(summary) == 1
     assert int(summary.loc[0, "last_epoch"]) == 2

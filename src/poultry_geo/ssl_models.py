@@ -529,7 +529,12 @@ class RemoteSensingViT(nn.Module):
         requested_precision = _validate_precision(precision)
         image_hw = _pair(image_size)
         patch_hw = _pair(patch_size)
-        
+
+        if image_hw[0] % patch_hw[0] != 0 or image_hw[1] % patch_hw[1] != 0:
+            raise ValueError(
+                f"image_size {image_hw} must be divisible by patch_size {patch_hw}."
+            )
+
         self.requested_precision = requested_precision
         self.resolved_precision = _resolve_precision(requested_precision, allow_nf4=True)
         self.gradient_checkpointing = gradient_checkpointing
@@ -597,6 +602,10 @@ class RemoteSensingViT(nn.Module):
         return outputs.to(dtype=_output_dtype(self.resolved_precision))
 
     def forward_features(self, inputs: torch.Tensor) -> torch.Tensor:
+        if inputs.shape[2] % self.geometry.patch_size[0] != 0 or inputs.shape[3] % self.geometry.patch_size[1] != 0:
+            raise ValueError(
+                f"Runtime input size {(inputs.shape[2], inputs.shape[3])} must be divisible by patch_size {self.geometry.patch_size}."
+            )
         patch_tokens, current_grid = self.embed_patches(inputs)
         positioned_tokens = self.add_position_embeddings(patch_tokens, current_grid)
         return self.encode_tokens(positioned_tokens)
@@ -673,6 +682,10 @@ class DecoderHead(nn.Module):
         if grid_size is None:
             side = round(patch_embeddings.shape[1] ** 0.5)
             grid_size = (side, side)
+        if patch_embeddings.shape[1] != grid_size[0] * grid_size[1]:
+            raise ValueError(
+                f"patch_embeddings length {patch_embeddings.shape[1]} does not match grid_size {grid_size}."
+            )
         outputs = patch_embeddings.transpose(1, 2).reshape(patch_embeddings.shape[0], self.embed_dim, grid_size[0], grid_size[1])
         outputs = self.proj(outputs)
         outputs = F.gelu(outputs)
@@ -807,7 +820,12 @@ class RemoteSensingMIMModel(nn.Module):
         _trunc_normal_(self.mask_token)
         self.reconstruction_head = _PrecisionLinear(embed_dim, self.patch_dim, precision=self.reconstruction_precision)
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def compute_masked_loss(reconstruction: torch.Tensor, target: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        loss = (reconstruction.float() - target.float()).pow(2).mean(dim=-1)
+        return loss[mask].mean()
+
+    def forward_with_intermediates(self, inputs: torch.Tensor) -> dict[str, torch.Tensor]:
         adapted = self.adapter(inputs)
         patch_tokens, grid_size = self.backbone.embed_patches(adapted)
         num_masked = int(round(patch_tokens.shape[1] * self.mask_ratio))
@@ -819,8 +837,18 @@ class RemoteSensingMIMModel(nn.Module):
         encoded = self.backbone.encode_tokens(positioned)
         recon = self.reconstruction_head(encoded).to(dtype=_output_dtype(self.reconstruction_precision))
         target = F.unfold(adapted.detach().clamp(0.0, 1.0), kernel_size=self.patch_size, stride=self.patch_size).transpose(1, 2).to(recon.dtype)
-        loss = (recon.float() - target.float()).pow(2).mean(dim=-1)
-        return loss[mask].mean()
+        loss = self.compute_masked_loss(recon, target, mask)
+        return {
+            "adapted": adapted,
+            "tokens": patch_tokens,
+            "mask": mask,
+            "reconstructed_patches": recon,
+            "target_patches": target,
+            "loss": loss,
+        }
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        return self.forward_with_intermediates(inputs)["loss"]
 
 
 __all__ = [

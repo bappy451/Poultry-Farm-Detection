@@ -1,25 +1,27 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
-
 usage() {
   cat <<'EOF'
 Usage:
   ./scripts/spark_grid_train.sh --training-name NAME [options]
 
 What it does:
-  - runs stateful resume-aware SparK (SSL) grid search training
-  - appends every run to one project log file by default
+  - runs stateful resume-aware SparK (SSL) grid search training.
 
 Options:
   --training-name NAME  Run identifier.
   --config PATH         Path to the SparK grid-search YAML config. Default: configs/spark_grid_search.yaml
   --epochs INT          Override runtime.epochs from the config.
   --root-dir PATH       Root directory for saved runs. Default: trained_models
+  --verbose             Enable rich multi-line progress reporting with live metrics.
   --python PATH         Python executable to use.
   --log-file PATH       Explicit log file path.
   --no-log              Disable automatic append logging for this run
   -h, --help            Show this wrapper help
+
+Examples:
+  ./scripts/spark_grid_train.sh --training-name my-spark-grid --verbose
 EOF
 }
 

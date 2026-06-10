@@ -112,16 +112,22 @@ class SparseResNetEncoder(nn.Module):
     def forward(self, x):
         # Input x is a SparseConvTensor or a tuple (features, indices, spatial_shape, batch_size) if spconv is missing
         if spconv is None and isinstance(x, tuple):
-            # In testing environments without spconv, x is a mock tuple. 
-            # We need to project the sparse features back to a dense dummy grid so nn.Conv2d doesn't crash.
             features, indices, spatial_shape, batch_size = x
             B = batch_size
             C = features.shape[1]
             H, W = spatial_shape[1], spatial_shape[2]
             dense_x = torch.zeros((B, C, H, W), device=features.device, dtype=features.dtype)
-            for i in range(features.shape[0]):
-                b, z, y, x_idx = indices[i].long().tolist()
-                dense_x[b, :, y, x_idx] = features[i]
+            
+            # Optimized Vectorization: Replace slow Python loop
+            # indices is [N, 4] -> (B, Z, Y, X)
+            b = indices[:, 0].long()
+            y = indices[:, 2].long()
+            x_idx = indices[:, 3].long()
+            
+            # Using advanced indexing to populate the dense tensor in one GPU operation
+            # features is [N, C]
+            # dense_x[b, :, y, x_idx] selects N pixels across all C channels
+            dense_x[b, :, y, x_idx] = features
             x = dense_x
 
         x = self.stem(x)
@@ -188,9 +194,13 @@ class SparseCSPDarkNetEncoder(nn.Module):
             C = features.shape[1]
             H, W = spatial_shape[1], spatial_shape[2]
             dense_x = torch.zeros((B, C, H, W), device=features.device, dtype=features.dtype)
-            for i in range(features.shape[0]):
-                b, z, y, x_idx = indices[i].long().tolist()
-                dense_x[b, :, y, x_idx] = features[i]
+            
+            # Optimized Vectorization: Replace slow Python loop
+            b = indices[:, 0].long()
+            y = indices[:, 2].long()
+            x_idx = indices[:, 3].long()
+            
+            dense_x[b, :, y, x_idx] = features
             x = dense_x
 
         x = self.stem(x)

@@ -2,14 +2,14 @@ data:
   image_dir: ./temp/test_512
   image_size: 224
   n_channels: 3
-  batch_size: 256
+  batch_size: 128
   num_workers: 16
 
 runtime:
   device: auto
   seed: 27
   output_dir: ./runs/ssl-grid-search
-  epochs: 1
+  epochs: 5
 
 grid_search:
   # ViT variants: S (Small), B (Base), L (Large), H (Huge)
@@ -17,7 +17,7 @@ grid_search:
     - S
     - B
     - L
-    - H
+    # - H
   
   use_lora:
     - false
@@ -37,7 +37,7 @@ grid_search:
     
   optimizer:
     - adamw
-    - adan
+    # - adan
     # - lion
     # - sophia
     
@@ -47,11 +47,11 @@ grid_search:
     
   learning_rate:
     - 0.0001
-    - 0.0005
+    # - 0.0005
     
   weight_decay:
     - 0.05
 
   # Linear Warmup duration (epochs)
   warmup_epochs:
-    - 5
+    - 1

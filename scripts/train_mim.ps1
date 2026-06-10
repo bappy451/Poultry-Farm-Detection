@@ -14,9 +14,12 @@ What it does:
   - supports fp32, fp16, bf16, and nf4/QLoRA-style runs
   - appends every run to one project log file by default
 
+Options:
+  --verbose             Enable rich multi-line progress reporting with live metrics.
+
 Examples:
-  .\scripts\train_mim.ps1 --data-root .\tmp\test_jpg --output-dir .\runs\mim-smoke --batch-size 4 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --epochs 1 --precision bf16 --device gpu
-  .\scripts\train_mim.ps1 --data-root .\tmp\test_jpg --output-dir .\runs\mim-nf4 --batch-size 4 --crop-size 224 --channels 4 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --epochs 1 --precision nf4 --use-lora --freeze-backbone
+  .\scripts\train_mim.ps1 --data-root .\tmp\test_jpg --output-dir .\runs\mim-smoke --batch-size 4 --crop-size 224 --channels 3 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --epochs 1 --precision bf16 --device gpu --verbose
+  .\scripts\train_mim.ps1 --data-root .\tmp\test_jpg --output-dir .\runs\mim-nf4 --batch-size 4 --crop-size 224 --channels 4 --patch-size 16 --embed-dim 192 --depth 8 --num-heads 6 --epochs 1 --precision nf4 --use-lora --freeze-backbone --verbose
 '@ | Write-Output
 }
 

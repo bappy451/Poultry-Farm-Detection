@@ -13,9 +13,12 @@ What it does:
   - supports hierarchical CNN backbones (ResNet50, YOLO CSPDarkNet)
   - appends every run to one project log file by default
 
+Options:
+  --verbose             Enable rich multi-line progress reporting with live metrics.
+
 Examples:
-  ./scripts/train_spark.sh --python "$CONDA_PREFIX/bin/python" --data-root ./tmp/test_jpg --output-dir ./runs/spark-smoke --batch-size 4 --backbone-type resnet50 --precision bf16 --device cuda
-  ./scripts/train_spark.sh --python "$CONDA_PREFIX/bin/python" --data-root ./tmp/test_jpg --output-dir ./runs/spark-yolo --batch-size 4 --backbone-type cspdarknet --mask-ratio 0.75 --epochs 10
+  ./scripts/train_spark.sh --python "$CONDA_PREFIX/bin/python" --data-root ./tmp/test_jpg --output-dir ./runs/spark-smoke --batch-size 4 --backbone-type resnet50 --precision bf16 --device cuda --verbose
+  ./scripts/train_spark.sh --python "$CONDA_PREFIX/bin/python" --data-root ./tmp/test_jpg --output-dir ./runs/spark-yolo --batch-size 4 --backbone-type cspdarknet --mask-ratio 0.75 --epochs 10 --verbose
 EOF
 }
 

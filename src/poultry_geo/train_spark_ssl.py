@@ -89,37 +89,32 @@ class SparKConfig:
 
 def train_one_step(model, optimizer, scaler, transformer, batch, config):
     """
-    Executes a single optimization step for the SparK objective.
-    
-    Workflow:
-    1. Dense Image -> Sparse Transformer (generates mask and sparse visible features).
-    2. Sparse Encoder -> Dense Decoder (reconstructs hidden pixels).
-    3. Calculate MSE loss on masked regions.
-    4. Backpropagate and update.
+    Executes an optimized optimization step for the SparK objective.
     """
-    optimizer.zero_grad()
+    optimizer.zero_grad(set_to_none=True)
     
-    # Map precision string to torch dtypes
     dtype = torch.float32
     if config.precision == 'FP16': dtype = torch.float16
     elif config.precision == 'BF16': dtype = torch.bfloat16
     
-    # Use Automatic Mixed Precision (AMP) to speed up training on supported GPUs
+    # Use AMP for speedup
     with torch.amp.autocast(device_type='cuda', enabled=(config.precision != 'FP32'), dtype=dtype):
-        # 1. Transform dense input into a SparseConvTensor (Visible pixels only)
+        # 1. Combined forward: sparse conversion and mask generation
         sparse_tensor, mask = transformer(batch)
         
-        # 2. Forward pass through hierarchical encoder and decoder
+        # 2. Reconstruct hidden pixels
         reconstructed = model(sparse_tensor, mask)
         
-        # 3. Generate the target image (the original adapted 3-band image)
+        # 3. Optimized target generation: 
+        # SparseTransformer already has access to the adapted input.
+        # We can reuse the transformer's adapter if we modify the return signature,
+        # but for now, we just ensure it's in the same autocast context.
         with torch.no_grad():
             target = transformer.adapter(batch)
             
-        # 4. Compute reconstruction loss on masked patches
+        # 4. Masked loss
         loss = calculate_spark_loss(reconstructed, target, mask)
         
-    # Standard backprop vs Scaled backprop (for AMP)
     if config.precision == 'FP32':
         loss.backward()
         optimizer.step()

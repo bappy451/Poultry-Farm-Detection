@@ -14,6 +14,21 @@ Whether you are training custom self-supervised models on remote sensing data or
 
 ---
 
+## 📑 Table of Contents
+1. [Key Capabilities](#-key-capabilities)
+2. [Installation & Setup](#-installation--setup)
+3. [Project Layout](#-project-layout)
+4. [Architecture & Modules](#-architecture--modules)
+5. [Cross-Platform Script Execution](#-cross-platform-script-execution)
+6. [Foundation Model Pretraining (SSL)](#-foundation-model-pretraining-ssl)
+7. [Monitoring & Visualization](#-monitoring--visualization)
+8. [CLI Reference Guide](#-cli-reference-guide)
+9. [Configuration-Driven Execution](#️-configuration-driven-execution)
+10. [Troubleshooting & Known Issues](#-troubleshooting--known-issues)
+11. [Testing & Validation](#-testing--validation)
+
+---
+
 ## ✨ Key Capabilities
 
 ### 🌍 Geospatial Data Processing
@@ -24,7 +39,9 @@ Whether you are training custom self-supervised models on remote sensing data or
 ### 🧠 Advanced Machine Learning
 - **Tiled Inference:** Stream large rasters iteratively through YOLO (v8/v11) or RT-DETR models. This lazy-loading approach allows inference on multi-gigabyte files on standard hardware.
 - **Self-Supervised Learning (SSL):** Native support for Masked Image Modeling (MIM) using Vision Transformers (ViT) and Sparse Masked Modeling (SparK) for CNNs (ResNet, CSPDarknet).
-- **Stateful Grid Search:** Conduct massive hyperparameter sweeps for segmentation tasks. If interrupted, the pipeline resumes exactly where it left off.
+- **Sequential Grid Search:** Conduct massive hyperparameter sweeps for pretraining and segmentation tasks. Experiments are run reliably one after another, ensuring stability and accurate metric tracking without the overhead of multiprocessing.
+- **Rich Progress Reporting:** Real-time verbose feedback showing current batch loss, running averages, learning rates, and pixel-level accuracy.
+- **Stateful Resumption:** If interrupted, training resumes exactly where it left off, including optimizer and scheduler states.
 
 ### 🗺️ GIS Post-Processing & Analytics
 - **Spatial Deduplication:** Suppress overlapping detections using Centroid Distance or Mask Intersection-over-Union (IoU).
@@ -41,8 +58,8 @@ The project supports macOS, Linux, and Windows. Python 3.10 or higher is require
 ### 1. POSIX (macOS / Linux)
 
 ```bash
-# Clone the repository (if applicable)
-# git clone <repo_url> && cd <repo>
+# Clone the repository
+git clone <repo_url> && cd <repo>
 
 # Create and activate a virtual environment
 python -m venv .venv
@@ -85,13 +102,13 @@ py -3.12 -m venv .venv
 - `scripts/plot_ssl_grid.*`: Wrappers for generating grid search summary plots.
 - `scripts/plot_run.*`: Wrappers for plotting individual run metrics (loss curves).
 - `scripts/train_segmentation.*`: Wrappers for running stateful grid-search segmentation training (fine-tuning).
-- `scripts/train_spark.*`: Wrappers for SparK SSL pretraining using CNNs.
-- `configs/pipeline.example.json`: Example configuration file for `run-pipeline`.
+- `scripts/spark_grid_train.*`: Wrappers for SparK SSL grid search training.
+- `scripts/train_spark.*`: Wrappers for single SparK SSL pretraining using CNNs.
+- `configs/`: YAML and JSON configuration files for automated pipelines and grid searches.
 - `tests/`: Unit tests for the extracted code and pipeline logic.
 - `pyproject.toml`: Package metadata and console entrypoint definitions.
-- `requirements.txt`: Core installation dependencies for package development and tests.
-- `requirements-ml.txt`: Heavier ML installation dependencies for YOLO, export, and SAM models.
-- `Makefile`: Convenience setup and testing commands.
+- `requirements.txt`: Core installation dependencies.
+- `requirements-ml.txt`: Heavier ML installation dependencies (Torch, YOLO, etc.).
 
 ---
 
@@ -120,64 +137,81 @@ While you can run the application directly using the Python module (`python -m p
 - **`.cmd` scripts:** Command Prompt wrappers for Windows. These act as launchers that call the `.ps1` files.
 - **`.ps1` scripts:** PowerShell scripts containing the actual Windows execution logic. (You rarely need to call these directly; use the `.cmd` files instead).
 
-### Key Scripts
-| Script Name | Purpose | Linux/macOS Usage | Windows Usage |
-|---|---|---|---|
-| `poultry_geo.*` | Generic CLI entry point. | `./scripts/poultry_geo.sh --help` | `.\scripts\poultry_geo.cmd --help` |
-| `slice_tiles.*` | Slicing massive GeoTIFF datasets. | `./scripts/slice_tiles.sh` | `.\scripts\slice_tiles.cmd` |
-| `train_ssl_grid.*`| Stateful SSL (MIM) grid search. | `./scripts/train_ssl_grid.sh` | `.\scripts\train_ssl_grid.cmd` |
-| `plot_ssl_grid.*` | Summary plots for grid search. | `./scripts/plot_ssl_grid.sh` | `.\scripts\plot_ssl_grid.cmd` |
-| `plot_run.*` | Loss curves for a specific run. | `./scripts/plot_run.sh` | `.\scripts\plot_run.cmd` |
-| `spark_grid_train.*` | Stateful SparK SSL grid search. | `./scripts/spark_grid_train.sh` | `.\scripts\spark_grid_train.cmd` |
-| `train_mim.*` | Masked Image Modeling SSL. | `./scripts/train_mim.sh` | `.\scripts\train_mim.cmd` |
-| `train_spark.*` | Single SparK SSL training run. | `./scripts/train_spark.sh` | `.\scripts\train_spark.cmd` |
-
-**Important Windows Note:** Use the `.cmd` scripts from the Command Prompt or PowerShell, as they handle invoking PowerShell with `ExecutionPolicy Bypass` automatically.
+**Important Windows Note:** Always use the `.cmd` scripts from the Command Prompt or PowerShell, as they handle invoking PowerShell with `ExecutionPolicy Bypass` automatically.
 
 ---
 
-## 🧪 Foundation Model Grid Search Workflow
+## 🧪 Foundation Model Pretraining (SSL)
 
-This pipeline supports automated, resume-aware hyperparameter grid searches for Self-Supervised Learning (SSL).
+This pipeline supports automated, stable, and resume-aware Self-Supervised Learning (SSL). We support two primary methods: **MIM** (Vision Transformers) and **SparK** (Hierarchical CNNs).
 
-### 1. Start/Resume a Grid Search
-
-You can choose between **MIM (Vision Transformers)** or **SparK (Hierarchical CNNs)**.
+### 1. Config-Driven Grid Search (Recommended)
+Define your hyperparameters in a YAML file, and the pipeline will run experiments sequentially, maintaining full state for easy resumption.
 
 #### Option A: MIM (MAE-style ViT)
-*   **Windows:** `.\scripts\train_ssl_grid.cmd --training-name "mim-run" --config ssl_config.yaml`
-*   **Linux:** `./scripts/train_ssl_grid.sh --training-name "mim-run" --config ssl_config.yaml`
+*   **Config:** `ssl_config.yaml`
+*   **Windows:** `.\scripts\train_ssl_grid.cmd --training-name "mim-search" --config ssl_config.yaml --verbose`
+*   **Linux:** `./scripts/train_ssl_grid.sh --training-name "mim-search" --config ssl_config.yaml --verbose`
 
 #### Option B: SparK (Sparse Masked Modeling)
-*   **Windows:** `.\scripts\spark_grid_train.cmd --training-name "spark-run" --config configs/spark_grid_search.yaml`
-*   **Linux:** `./scripts/spark_grid_train.sh --training-name "spark-run" --config configs/spark_grid_search.yaml`
+*   **Supported Backbones:** `resnet50`, `yolo11l`, `yolov26l`
+*   **Config:** `configs/spark_grid_search.yaml`
+*   **Windows:** `.\scripts\spark_grid_train.cmd --training-name "spark-search" --config configs/spark_grid_search.yaml --verbose`
+*   **Linux:** `./scripts/spark_grid_train.sh --training-name "spark-search" --config configs/spark_grid_search.yaml --verbose`
 
-### 2. Plot the Summary Results
-Generate a summary heatmap/bar chart of all experiments in a campaign:
+> **Note:** Set `image_dir` in your config to the directory containing your tiles (e.g., `./temp/test_512`).
 
-*   **Windows:** `.\scripts\plot_ssl_grid.cmd --training-name "mim-run"`
-*   **Linux:** `./scripts/plot_ssl_grid.sh --training-name "mim-run"`
+### 2. Automated Sequential Campaign
+If you want to run both SparK and MIM pretraining back-to-back without manual intervention, use the provided campaign scripts in the root directory. These scripts will automatically:
+1.  Run the full SparK grid search.
+2.  **Generate summary plots** for SparK in `trained_models/spark-search/figures`.
+3.  Run the full MIM grid search.
+4.  **Generate summary plots** for MIM in `trained_models/mim-search/figures`.
 
-### 3. Plot a Specific Run's Convergence
-To visualize the loss curve for a specific experiment ID:
+*   **Windows:** `.\run_campaign.cmd`
+*   **Linux:** `chmod +x run_campaign.sh && ./run_campaign.sh`
 
-*   **Windows:** `.\scripts\plot_run.cmd "trained_models/mim-run/<FOLDER>"`
-*   **Linux:** `./scripts/plot_run.sh "trained_models/mim-run/<FOLDER>"`
+### 3. Single Run CLI Training
+If you want to run a single experiment without a config file:
+
+#### MIM Single Run
+```bash
+# Windows (Example: Small ViT, 50 epochs)
+.\scripts\train_mim.cmd --data-root ".\temp\test_512" --output-dir ".\runs\mim-single" --model-name S --epochs 50 --verbose
+
+# Linux
+./scripts/train_mim.sh --data-root "./temp/test_512" --output-dir "./runs/mim-single" --model-name S --epochs 50 --verbose
+```
+
+#### SparK Single Run
+```bash
+# Windows (Example: ResNet50)
+.\scripts\train_spark.cmd --data-root ".\temp\test_512" --output-dir ".\runs\spark-single" --backbone-type resnet50 --epochs 50 --verbose
+
+# Linux
+./scripts/train_spark.sh --data-root "./temp/test_512" --output-dir "./runs/spark-single" --backbone-type resnet50 --epochs 50 --verbose
+```
 
 ---
 
-## 🛑 Troubleshooting & Known Issues
+## 📊 Monitoring & Visualization
 
-### 1. `command.log` File Lock (Windows)
-If a background training process crashes or is forcefully terminated, PowerShell may leave a write-lock on the `command.log` file. You will see an error like: *The process cannot access the file because it is being used by another process.*
-**Fix:** Find and terminate any orphaned `pwsh.exe` or `python.exe` processes, then delete the `command.log` file to reset the state.
+### 1. Real-Time Metrics
+When running with `--verbose`, the terminal provides a multi-line progress bar showing:
+- **Batch Loss:** Real-time reconstruction error.
+- **Average Loss:** Epoch-to-date loss.
+- **Learning Rate:** Current LR (including warmup/decay).
+- **ETA:** Estimated time remaining for the full campaign.
 
-### 2. YAML Schema Drift
-When running grid searches, ensure your configuration files strictly adhere to the schema expected by the pipeline. For example, use `image_dir` instead of `root`, and `image_size` instead of `crop_size`. If you encounter a `ValueError: config.yaml is missing data.image_dir`, double-check your parameter names against the provided examples in `ssl_config.yaml`.
+### 2. Plotting Results
+Generate summary visualizations after a grid search:
 
-### 3. Command Line Argument Parsing
-When passing paths or string values to the wrapper scripts, it is highly recommended to use the equals sign (`=`) syntax to prevent parsing errors due to line breaks or spaces in PowerShell.
-**Example:** `--training-name="my-run"` instead of `--training-name "my-run"`.
+*   **Windows:** `.\scripts\plot_ssl_grid.cmd --training-name "mim-search"`
+*   **Linux:** `./scripts/plot_ssl_grid.sh --training-name "mim-search"`
+
+To visualize the loss curve for a specific experiment:
+*   **Windows:** `.\scripts\plot_run.cmd "trained_models/mim-search/<EXP_FOLDER>"`
+*   **Linux:** `./scripts/plot_run.sh "trained_models/mim-search/<EXP_FOLDER>"`
 
 ---
 
@@ -237,6 +271,21 @@ poultry-geo run-pipeline configs/pipeline.example.json
 
 ---
 
+## 🛑 Troubleshooting & Known Issues
+
+### 1. `command.log` File Lock (Windows)
+If a background training process crashes or is forcefully terminated, PowerShell may leave a write-lock on the `command.log` file. You will see an error like: *The process cannot access the file because it is being used by another process.*
+**Fix:** The wrappers are designed to fail gracefully and continue printing to the terminal, but to restore logging, find and terminate any orphaned `pwsh.exe` or `python.exe` processes, then delete the `command.log` file.
+
+### 2. YAML Schema Drift
+When running grid searches, ensure your configuration files strictly adhere to the schema expected by the pipeline. For example, use `image_dir` instead of `root`, and `image_size` instead of `crop_size`. If you encounter a `ValueError: config.yaml is missing data.image_dir`, double-check your parameter names against the provided examples in `ssl_config.yaml`.
+
+### 3. Command Line Argument Parsing
+When passing paths or string values to the wrapper scripts, it is highly recommended to use the equals sign (`=`) syntax to prevent parsing errors due to line breaks or spaces in PowerShell.
+**Example:** `--training-name="my-run"` instead of `--training-name "my-run"`.
+
+---
+
 ## 🧪 Testing & Validation
 
 The codebase maintains rigorous quality standards, informed by Test-Driven Development (TDD). 
@@ -245,7 +294,7 @@ Run the test suite:
 ```bash
 pytest
 ```
-*The suite includes over 47 unit tests validating geospatial logic, coordinate transformations, multiprocessing locks, and ML tensor shapes.*
+*The suite includes over 140 unit tests validating geospatial logic, coordinate transformations, multiprocessing locks, ML tensor shapes, and grid-search statefulness.*
 
 ---
 
