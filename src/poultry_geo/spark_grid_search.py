@@ -80,7 +80,11 @@ def _run_single_experiment(
             mask_ratio=float(grid["mask_ratio"]),
         ).to(resolved_device)
 
-        model = spark_models.SparKNetwork(backbone_type=backbone_type, in_channels=3).to(resolved_device)
+        model = spark_models.SparKNetwork(
+            backbone_type=backbone_type,
+            in_channels=3,
+            pretrained=bool(grid.get("pretrained", False)),
+        ).to(resolved_device)
 
         optimizer = build_optimizer(
             str(grid["optimizer"]),
@@ -134,6 +138,7 @@ def _run_single_experiment(
                 optimizer,
                 transformer,
                 spark_config,
+                model_name=backbone_type,
                 device=resolved_device,
                 precision=precision,
                 scaler=scaler,
@@ -230,6 +235,7 @@ def _train_one_epoch(
     transformer: torch.nn.Module,
     spark_config: Any,
     *,
+    model_name: str = "unknown",
     device: torch.device,
     precision: str,
     scaler: torch.amp.GradScaler,
@@ -259,6 +265,7 @@ def _train_one_epoch(
             lr = optimizer.param_groups[0]["lr"]
             
             detail = (
+                f"{model_name} | "
                 f"exp {experiment_index+1}/{total_experiments} | "
                 f"ep {epoch_index+1}/{total_epochs} | "
                 f"batch {batch_index}/{num_batches_safe} | "

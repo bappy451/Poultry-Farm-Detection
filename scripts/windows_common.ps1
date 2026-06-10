@@ -1,5 +1,9 @@
+# Set strict mode and error preference
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# Silence distracting HuggingFace symlink warnings on Windows
+$env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 
 function Resolve-UserPath {
     param(

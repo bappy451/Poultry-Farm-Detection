@@ -22,12 +22,10 @@ from poultry_geo.ssl_models import SUPPORTED_PRECISIONS, RemoteSensingMIMModel, 
 from poultry_geo.optimizers import build_optimizer
 
 
-SSL_GRID_KEYS = (
+REQUIRED_GRID_KEYS = (
     "model_name",
-    "use_lora",
-    "freeze_backbone",
+    "pretrained",
     "mask_ratio",
-    "drop_path_rate",
     "optimizer",
     "precision",
     "learning_rate",
@@ -56,7 +54,9 @@ def build_scheduler(optimizer: torch.optim.Optimizer, total_epochs: int, warmup_
     """
     def lr_lambda(epoch):
         if epoch < warmup_epochs:
-            return float(epoch) / float(max(1, warmup_epochs))
+            # Linear warmup: starts at 1/W and reaches 1.0 at W-1
+            return (float(epoch) + 1.0) / float(max(1, warmup_epochs))
+        # Cosine decay
         progress = float(epoch - warmup_epochs) / float(max(1, total_epochs - warmup_epochs))
         return 0.5 * (1.0 + np.cos(np.pi * progress))
 
@@ -88,11 +88,11 @@ def load_ssl_grid_search_config(config_path: str | Path) -> dict[str, Any]:
         if key not in runtime:
             raise ValueError(f"ssl_config.yaml is missing runtime.{key}")
 
-    missing_grid = [key for key in SSL_GRID_KEYS if key not in grid]
+    missing_grid = [key for key in REQUIRED_GRID_KEYS if key not in grid]
     if missing_grid:
-        raise ValueError(f"ssl_config.yaml is missing grid_search keys: {', '.join(missing_grid)}")
+        raise ValueError(f"Config file '{path}' is missing grid_search keys: {', '.join(missing_grid)}")
         
-    for key in SSL_GRID_KEYS:
+    for key in grid:
         if not isinstance(grid[key], list) or len(grid[key]) == 0:
             raise ValueError(f"grid_search.{key} must be a non-empty list.")
             
@@ -106,8 +106,10 @@ def expand_ssl_grid_search_configs(config: dict[str, Any]) -> list[dict[str, Any
     experiments: list[dict[str, Any]] = []
     seen_signatures: set[str] = set()
     
-    for values in itertools.product(*(grid[key] for key in SSL_GRID_KEYS)):
-        grid_values = dict(zip(SSL_GRID_KEYS, values, strict=True))
+    # Dynamically expand based on all keys provided in the grid_search section
+    keys = sorted(grid.keys())
+    for values in itertools.product(*(grid[key] for key in keys)):
+        grid_values = dict(zip(keys, values, strict=True))
         experiment = {
             "data": dict(data),
             "runtime": dict(runtime),
@@ -184,6 +186,7 @@ def _run_single_experiment(
             use_lora=bool(grid["use_lora"]),
             freeze_backbone=bool(grid["freeze_backbone"]),
             drop_path_rate=float(grid["drop_path_rate"]),
+            pretrained=bool(grid.get("pretrained", False)),
         ).to(resolved_device)
         
         optimizer = build_optimizer(
@@ -230,6 +233,7 @@ def _run_single_experiment(
                 model,
                 train_loader,
                 optimizer,
+                model_name=model_name,
                 device=resolved_device,
                 precision=precision,
                 scaler=scaler,
@@ -346,6 +350,7 @@ def _train_one_epoch(
     loader,
     optimizer,
     *,
+    model_name: str = "unknown",
     device: torch.device,
     precision: str,
     scaler,
@@ -384,6 +389,7 @@ def _train_one_epoch(
             lr = optimizer.param_groups[0]["lr"]
             
             detail = (
+                f"{model_name} | "
                 f"exp {experiment_index+1}/{total_experiments} | "
                 f"ep {epoch_index+1}/{total_epochs} | "
                 f"batch {batch_index}/{num_batches} | "

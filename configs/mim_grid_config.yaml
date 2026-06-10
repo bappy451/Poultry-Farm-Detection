@@ -1,15 +1,15 @@
 data:
-  image_dir: ./temp/test_512
+  image_dir: E:\MS_tiles_512_256_jpg
   image_size: 224
   n_channels: 3
-  batch_size: 128
-  num_workers: 16
+  batch_size: 64
+  num_workers: 20
 
 runtime:
   device: auto
   seed: 27
   output_dir: ./runs/ssl-grid-search
-  epochs: 5
+  epochs: 2
 
 grid_search:
   # ViT variants: S (Small), B (Base), L (Large), H (Huge)
@@ -22,6 +22,9 @@ grid_search:
   use_lora:
     - false
     # - true
+  pretrained: 
+    # - false
+    - true
   
   freeze_backbone:
     - false
@@ -42,8 +45,8 @@ grid_search:
     # - sophia
     
   precision:
-    # - fp16
-    - fp32
+    - fp16
+    # - fp32
     
   learning_rate:
     - 0.0001

@@ -164,9 +164,9 @@ Define your hyperparameters in a YAML file, and the pipeline will run experiment
 ### 2. Automated Sequential Campaign
 If you want to run both SparK and MIM pretraining back-to-back without manual intervention, use the provided campaign scripts in the root directory. These scripts will automatically:
 1.  Run the full SparK grid search.
-2.  **Generate summary plots** for SparK in `trained_models/spark-search/figures`.
+2.  **Generate comprehensive plots** (summary charts + individual loss curves) and CSV data in `trained_models/spark-search/figures`.
 3.  Run the full MIM grid search.
-4.  **Generate summary plots** for MIM in `trained_models/mim-search/figures`.
+4.  **Generate comprehensive plots** and CSV data in `trained_models/mim-search/figures`.
 
 *   **Windows:** `.\run_campaign.cmd`
 *   **Linux:** `chmod +x run_campaign.sh && ./run_campaign.sh`
@@ -204,12 +204,16 @@ When running with `--verbose`, the terminal provides a multi-line progress bar s
 - **ETA:** Estimated time remaining for the full campaign.
 
 ### 2. Plotting Results
-Generate summary visualizations after a grid search:
+The plotting suite generates professional-grade visualizations and preserves raw metrics for later analysis. Outputs are saved in the `figures/` sub-directory of your training campaign.
+
+#### Grid Search Summary
+Generates a comparative bar chart of the top experiments and a **`summary_data.csv`** containing the raw metrics used for the figure. It also automatically iterates through all successful experiments and generates individual loss curves for each.
 
 *   **Windows:** `.\scripts\plot_ssl_grid.cmd --training-name "mim-search"`
 *   **Linux:** `./scripts/plot_ssl_grid.sh --training-name "mim-search"`
 
-To visualize the loss curve for a specific experiment:
+#### Individual Run Plots
+To manually visualize the loss curve for a specific experiment folder:
 *   **Windows:** `.\scripts\plot_run.cmd "trained_models/mim-search/<EXP_FOLDER>"`
 *   **Linux:** `./scripts/plot_run.sh "trained_models/mim-search/<EXP_FOLDER>"`
 

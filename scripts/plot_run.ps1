@@ -83,4 +83,4 @@ if (-not [string]::IsNullOrWhiteSpace($pythonExe)) {
 $commandArgs += @("plot-run", $runDir, "--output-dir", $outputDir)
 $commandArgs += $forwardArgs.ToArray()
 
-& $poultryGeo $commandArgs
+& $poultryGeo @commandArgs

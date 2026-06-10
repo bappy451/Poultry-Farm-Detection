@@ -1,24 +1,25 @@
 data:
-  image_dir: ./temp/test_512
+  image_dir: E:\MS_tiles_512_256_jpg
   image_size: 224
   n_channels: 3
   batch_size: 128
-  num_workers: 16
+  num_workers: 20
 
 runtime:
   device: "auto"
   seed: 27
   output_dir: "./runs/spark-grid-search"
-  epochs: 5
+  epochs: 2
 
 grid_search:
-  model_name: ["resnet50", "yolo11l", "yolov26l"]
+  model_name: ["yolov26l", "yolo11l", "resnet50"]
   learning_rate: [0.0001]
   mask_ratio: [0.75]
-  precision: ["fp32"]
+  precision: ["fp16"]
   optimizer: ["adamw"]
   weight_decay: [0.05]
   warmup_epochs: [0]
   drop_path_rate: [0.0]
   freeze_backbone: [false]
   use_lora: [false]
+  pretrained: [false]

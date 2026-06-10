@@ -613,6 +613,71 @@ class RemoteSensingViT(nn.Module):
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         return self.forward_features(inputs)
 
+    def load_pretrained_weights(self) -> None:
+        """
+        Loads ImageNet pretrained weights from timm into the backbone.
+        """
+        try:
+            import timm
+        except ImportError:
+            print("Warning: timm not installed. Cannot load pretrained weights.")
+            return
+
+        # Map internal config names to timm model names
+        # Standard ViT models in timm
+        timm_map = {
+            384: "vit_small_patch16_224",
+            768: "vit_base_patch16_224",
+            1024: "vit_large_patch16_224",
+            1280: "vit_huge_patch14_224_in21k",
+        }
+        
+        timm_model_name = timm_map.get(self.embed_dim)
+        if not timm_model_name:
+            print(f"Warning: No pretrained mapping for embed_dim={self.embed_dim}")
+            return
+            
+        print(f"Loading pretrained weights for {timm_model_name}...")
+        try:
+            # We only need the state_dict to load into our custom implementation
+            timm_model = timm.create_model(timm_model_name, pretrained=True)
+            timm_state = timm_model.state_dict()
+            
+            # Map timm names to our custom names
+            # Our names: patch_embed.weight, pos_embed, blocks.i.norm1.weight, etc.
+            # timm names: patch_embed.proj.weight, pos_embed, blocks.i.norm1.weight, etc.
+            
+            new_state = {}
+            for k, v in timm_state.items():
+                new_key = k
+                # Handle patch_embed.proj -> patch_embed
+                if k.startswith("patch_embed.proj."):
+                    new_key = k.replace("patch_embed.proj.", "patch_embed.")
+                
+                # We skip things like cls_token if we don't have it (we use pure GAP or patch tokens)
+                # We skip head weights
+                if k.startswith("head.") or k == "cls_token" or k == "dist_token":
+                    continue
+                
+                if new_key in self.state_dict():
+                    # Check shape compatibility
+                    target_shape = self.state_dict()[new_key].shape
+                    if v.shape != target_shape:
+                        if new_key == "pos_embed" and v.shape[1] == target_shape[1] + 1:
+                            # Handle cls_token in timm (1, N+1, D) vs our (1, N, D)
+                            v = v[:, 1:, :]
+                        else:
+                            print(f"  Skipping {new_key} due to shape mismatch: {v.shape} vs {target_shape}")
+                            continue
+                    
+                    new_state[new_key] = v
+            
+            msg = self.load_state_dict(new_state, strict=False)
+            print(f"  Pretrained weights loaded: {len(new_state)} tensors. Missing: {len(msg.missing_keys)}")
+            
+        except Exception as e:
+            print(f"Error loading pretrained weights from timm: {e}")
+
     def _interpolate_positional_embeddings(
         self,
         target_grid: tuple[int, int],
@@ -783,6 +848,7 @@ class RemoteSensingMIMModel(nn.Module):
         attn_drop_rate: float = 0.0,
         drop_path_rate: float = 0.0,
         quantization_config: Any | None = None,
+        pretrained: bool = False,
     ) -> None:
         super().__init__()
         self.requested_precision = _validate_precision(precision)
@@ -809,6 +875,10 @@ class RemoteSensingMIMModel(nn.Module):
             attn_drop_rate=attn_drop_rate,
             drop_path_rate=drop_path_rate,
         )
+        
+        if pretrained:
+            self.backbone.load_pretrained_weights()
+            
         if self.freeze_backbone and not self.use_lora:
             self.backbone.requires_grad_(False)
         if self.use_lora:

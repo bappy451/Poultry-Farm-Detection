@@ -116,4 +116,4 @@ if (-not [string]::IsNullOrWhiteSpace($pythonExe)) {
 $commandArgs += @("ssl-grid-plot", $resultsCsv, "--output-dir", $outputDir)
 $commandArgs += $forwardArgs.ToArray()
 
-& $poultryGeo $commandArgs
+& $poultryGeo @commandArgs

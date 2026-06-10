@@ -62,10 +62,20 @@ def replace_with_sparse_layers(module: nn.Module):
                     kernel_size=child.kernel_size, stride=child.stride,
                     padding=child.padding, bias=(child.bias is not None)
                 )
+            # Copy weights from the original dense layer
+            with torch.no_grad():
+                new_layer.weight.copy_(child.weight)
+                if child.bias is not None:
+                    new_layer.bias.copy_(child.bias)
             setattr(module, name, new_layer)
         elif isinstance(child, nn.BatchNorm2d):
             # Replace BatchNorm with LayerNorm for sparse processing
-            setattr(module, name, SparseLayerNorm(child.num_features))
+            new_layer = SparseLayerNorm(child.num_features)
+            # BN to LN mapping is not direct, but we can copy the weights/bias for gain/offset
+            with torch.no_grad():
+                new_layer.ln.weight.copy_(child.weight)
+                new_layer.ln.bias.copy_(child.bias)
+            setattr(module, name, new_layer)
         elif isinstance(child, nn.ReLU):
             setattr(module, name, SparseReLU(inplace=child.inplace))
         else:
@@ -79,10 +89,15 @@ class SparseResNetEncoder(nn.Module):
     This encoder processes only unmasked pixels, allowing the hierarchical CNN 
     to learn features from irregular masking patterns.
     """
-    def __init__(self, in_channels=3):
+    def __init__(self, in_channels=3, pretrained=False):
         super().__init__()
-        from torchvision.models import resnet50
-        base = resnet50()
+        from torchvision.models import resnet50, ResNet50_Weights
+        
+        if pretrained:
+            print("Loading pretrained ResNet50 weights (ImageNet-1K v2)...")
+            base = resnet50(weights=ResNet50_Weights.DEFAULT)
+        else:
+            base = resnet50()
         
         # Initial stem: Conv(s=2) + MaxPool(s=2) = H/4 downsampling.
         # MaxPool is replaced with a strided SparseConv to avoid 'blurring' the sparsity pattern.
@@ -95,6 +110,10 @@ class SparseResNetEncoder(nn.Module):
                 SparseLayerNorm(64),
                 SparseReLU(inplace=True)
             )
+            # Copy weights from base resnet stem if pretrained
+            if pretrained:
+                with torch.no_grad():
+                    self.stem[0].weight.copy_(base.conv1.weight)
         else:
             self.stem = nn.Sequential(
                 nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False),
@@ -102,6 +121,11 @@ class SparseResNetEncoder(nn.Module):
                 nn.ReLU(inplace=True),
                 nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
             )
+            if pretrained:
+                with torch.no_grad():
+                    self.stem[0].weight.copy_(base.conv1.weight)
+                    # BatchNorm weights are copied during replace_with_sparse_layers if spconv is None
+                    # but here we use base.layer1 etc below.
         
         # ResNet stages converted to sparse operations
         self.stage1 = replace_with_sparse_layers(base.layer1)
@@ -284,29 +308,97 @@ class SparKNetwork(nn.Module):
     with a dense hierarchical decoder to reconstruct original pixel values 
     from partially visible inputs.
     """
-    def __init__(self, backbone_type="resnet50", in_channels=3):
+    def __init__(self, backbone_type="resnet50", in_channels=3, pretrained=False):
         """
         Args:
             backbone_type: Type of hierarchical backbone to use (resnet50, yolo11l, etc.)
             in_channels: Number of input channels. Note: SparK typically processes 
                         3-channel adapted inputs for simplicity.
+            pretrained: Whether to load ImageNet pretrained weights for the encoder.
         """
         super().__init__()
         if backbone_type == "resnet50":
-            self.encoder = SparseResNetEncoder(in_channels=3)
+            self.encoder = SparseResNetEncoder(in_channels=3, pretrained=pretrained)
             encoder_channels = [256, 512, 1024, 2048]
         elif backbone_type == "yolo11l":
             self.encoder = SparseCSPDarkNetEncoder(in_channels=3, base_channels=128)
             encoder_channels = [128, 256, 512, 1024]
+            if pretrained:
+                self._load_yolo_pretrained(backbone_type, base_channels=128)
         elif backbone_type == "yolov26l":
             self.encoder = SparseCSPDarkNetEncoder(in_channels=3, base_channels=256)
             encoder_channels = [256, 512, 1024, 2048]
+            if pretrained:
+                print("Warning: yolov26l not found in Ultralytics. Starting from scratch.")
         else:
             # Default to standard CSPDarkNet (e.g. YOLOv8n/s scale)
             self.encoder = SparseCSPDarkNetEncoder(in_channels=3, base_channels=64)
             encoder_channels = [64, 128, 256, 512]
+            if pretrained:
+                print(f"Warning: Pretrained weights not yet supported for {backbone_type} in SparK. Starting from scratch.")
             
         self.decoder = HierarchicalDecoder(encoder_channels, out_channels=3)
+
+    def _load_yolo_pretrained(self, backbone_type: str, base_channels: int):
+        """
+        Helper to load YOLO weights from Ultralytics into our simplified encoder.
+        """
+        try:
+            from ultralytics import YOLO
+            print(f"Loading pretrained {backbone_type} weights from Ultralytics...")
+            # We download the classification model to get pure backbone weights
+            # Names: yolo11n-cls.pt, yolo11s-cls.pt, etc.
+            model_variant = backbone_type.replace("yolo", "yolo11") # normalize name
+            if backbone_type == "yolo11l":
+                model_variant = "yolo11l"
+            
+            yolo = YOLO(f"{model_variant}-cls.pt")
+            # The backbone is in yolo.model.model[0:10] roughly
+            yolo_state = yolo.model.state_dict()
+            
+            # Map YOLO backbone to our simplified stages
+            # YOLO v11 backbone structure:
+            # 0: Conv (Stem)
+            # 2: C3k2 (Stage 1)
+            # 4: C3k2 (Stage 2)
+            # 6: C3k2 (Stage 3)
+            # 8: C3k2 (Stage 4)
+            
+            mapping = {
+                "model.0.conv.weight": "encoder.stem.weight",
+                "model.0.bn.weight": "encoder.stem.ln.weight", # Approximate BN->LN
+                "model.0.bn.bias": "encoder.stem.ln.bias",
+                
+                "model.1.conv.weight": "encoder.stage1.0.weight",
+                "model.1.bn.weight": "encoder.stage1.1.ln.weight",
+                "model.1.bn.bias": "encoder.stage1.1.ln.bias",
+                
+                "model.3.conv.weight": "encoder.stage2.0.weight",
+                "model.3.bn.weight": "encoder.stage2.1.ln.weight",
+                "model.3.bn.bias": "encoder.stage2.1.ln.bias",
+                
+                "model.5.conv.weight": "encoder.stage3.0.weight",
+                "model.5.bn.weight": "encoder.stage3.1.ln.weight",
+                "model.5.bn.bias": "encoder.stage3.1.ln.bias",
+                
+                "model.7.conv.weight": "encoder.stage4.0.weight",
+                "model.7.bn.weight": "encoder.stage4.1.ln.weight",
+                "model.7.bn.bias": "encoder.stage4.1.ln.bias",
+            }
+            
+            new_state = {}
+            for k, v in yolo_state.items():
+                if k in mapping:
+                    target_key = mapping[k]
+                    # Since our encoder is simplified and uses spconv, we need to match the weight shape
+                    # spconv weights are typically the same as torch weights
+                    new_state[target_key] = v
+            
+            msg = self.load_state_dict(new_state, strict=False)
+            print(f"  YOLO pretrained weights loaded: {len(new_state)} tensors. Missing: {len(msg.missing_keys)}")
+            
+        except Exception as e:
+            print(f"Warning: Could not load YOLO pretrained weights: {e}")
 
     def forward(self, sparse_tensor, mask):
         """

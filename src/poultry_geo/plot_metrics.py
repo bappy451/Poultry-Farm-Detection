@@ -49,6 +49,7 @@ def plot_training_logs(run_dir: str | Path, output_dir: str | Path):
     
     json_path = run_dir / "metrics.json"
     csv_path = run_dir / "metrics.csv"
+    training_csv = run_dir / "training_metrics.csv"
     yolo_csv = run_dir / "results.csv"
     
     history = []
@@ -61,6 +62,9 @@ def plot_training_logs(run_dir: str | Path, output_dir: str | Path):
                 history = data["history"]
     elif csv_path.exists():
         df = pd.read_csv(csv_path)
+        history = df.to_dict('records')
+    elif training_csv.exists():
+        df = pd.read_csv(training_csv)
         history = df.to_dict('records')
     elif yolo_csv.exists():
         df = pd.read_csv(yolo_csv)
@@ -86,8 +90,11 @@ def plot_training_logs(run_dir: str | Path, output_dir: str | Path):
         df_hist = pd.DataFrame(history)
         epochs = df_hist.get('epoch', df_hist.index + 1)
         
-        if 'train_loss' in df_hist.columns:
-            ax.plot(epochs, df_hist['train_loss'], label='Training Loss', color='#004c99', marker='o', markersize=6)
+        # Support various loss column names (train_loss from some models, loss from StateManager)
+        t_loss_col = 'train_loss' if 'train_loss' in df_hist.columns else 'loss'
+        if t_loss_col in df_hist.columns:
+            ax.plot(epochs, df_hist[t_loss_col], label='Training Loss', color='#004c99', marker='o', markersize=6)
+        
         if 'val_loss' in df_hist.columns:
             ax.plot(epochs, df_hist['val_loss'], label='Validation Loss', color='#cc0000', marker='s', markersize=6)
         
@@ -138,7 +145,9 @@ def plot_grid_search_results(results_csv: str | Path, output_dir: str | Path):
     # Create descriptive labels for the y-axis
     labels = []
     for _, row in successful.iterrows():
-        label = f"{row['model_name']} | {row['optimizer']} | lr={row['learning_rate']} | {row['precision']}"
+        model_key = 'model_name' if 'model_name' in row else 'backbone_type'
+        name = row.get(model_key, 'unknown')
+        label = f"{name} | {row['optimizer']} | lr={row['learning_rate']} | {row['precision']}"
         labels.append(label)
         
     y_pos = range(len(labels))
@@ -157,9 +166,27 @@ def plot_grid_search_results(results_csv: str | Path, output_dir: str | Path):
         ax.text(width + (width * 0.01), bar.get_y() + bar.get_height()/2, 
                 f'{width:.4f}', va='center', fontsize=10, fontweight='bold')
 
+    # Save the campaign summary plot
     out_file = output_dir / "grid_search_summary.png"
     fig.savefig(out_file)
     plt.close(fig)
+
+    # Save the raw data used for the summary plot
+    summary_csv = output_dir / "summary_data.csv"
+    successful.to_csv(summary_csv, index=False)
+    
+    # NEW: Generate individual loss curves for all successful runs
+    print(f"Generating individual loss curves for {len(successful)} successful runs...")
+    for _, row in successful.iterrows():
+        run_dir = row.get('run_dir')
+        if not run_dir or not Path(run_dir).exists():
+            continue
+            
+        try:
+            plot_training_logs(run_dir, output_dir)
+        except Exception as e:
+            print(f"Warning: Could not plot metrics for {run_dir}: {e}")
+            
     return out_file
 
 
