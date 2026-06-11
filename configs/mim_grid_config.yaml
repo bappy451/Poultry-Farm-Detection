@@ -4,13 +4,13 @@ data:
   image_size: 224
   n_channels: 3
   batch_size: 64
-  num_workers: 20
+  num_workers: 8
 
 runtime:
   device: auto
   seed: 27
   output_dir: ./runs/ssl-grid-search
-  epochs: 5
+  epochs: 10
 
 grid_search:
   # ViT variants: S (Small), B (Base), L (Large), H (Huge)
