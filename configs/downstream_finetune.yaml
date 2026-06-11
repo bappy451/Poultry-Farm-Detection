@@ -1,0 +1,25 @@
+data:
+  path: Data/downstream_data.yaml
+
+training:
+  epochs: 50
+  batch: 8
+  imgsz: 640
+  project: trained_models/finetune_results
+  extra_args:
+    workers: 4
+
+
+models:
+  - name: yolo11l_spark
+    path: trained_models/spark-search/edeb5fe660d5_yolo11l_fp16/backbone_dense_ep4.pt
+    is_spark: true
+    base_yolo: trained_models/01_models/yolo11l-seg.pt
+  - name: yolo26l_spark
+    path: trained_models/spark-search/d979c75c9194_yolov26l_fp16/backbone_dense_ep4.pt
+    is_spark: true
+    base_yolo: trained_models/01_models/yolo26l-seg.pt
+  - name: yolo11l_pretrained
+    path: trained_models/01_models/yolo11l-seg.pt
+  - name: yolo26l_pretrained
+    path: trained_models/01_models/yolo26l-seg.pt
