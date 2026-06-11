@@ -1,5 +1,6 @@
 data:
   image_dir: E:\MS_tiles_512_256_jpg
+  catalog_path: ./trained_models/data_catalog.csv
   image_size: 224
   n_channels: 3
   batch_size: 128
@@ -9,7 +10,7 @@ runtime:
   device: "auto"
   seed: 27
   output_dir: "./runs/spark-grid-search"
-  epochs: 2
+  epochs: 5
 
 grid_search:
   model_name: ["yolov26l", "yolo11l", "resnet50"]

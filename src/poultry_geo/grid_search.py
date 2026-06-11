@@ -126,6 +126,7 @@ class PairedSegmentationDataset(Dataset[dict[str, Any]]):
         *,
         image_size: int,
         n_channels: int,
+        catalog_path: str | Path | None = None,
     ) -> None:
         self.image_dir = Path(image_dir).expanduser().resolve()
         self.mask_dir = Path(mask_dir).expanduser().resolve()
@@ -139,20 +140,40 @@ class PairedSegmentationDataset(Dataset[dict[str, Any]]):
             raise ValueError("n_channels must be a positive integer.")
         self.image_size = int(image_size)
         self.n_channels = int(n_channels)
+        self.catalog_path = Path(catalog_path) if catalog_path else None
         self.pairs = self._discover_pairs()
 
     def _discover_pairs(self) -> list[tuple[Path, Path]]:
-        image_paths = sorted(
-            path
-            for path in self.image_dir.rglob("*")
-            if path.is_file() and path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
-        )
+        if self.catalog_path is not None:
+            if not self.catalog_path.exists():
+                raise FileNotFoundError(f"Catalog file not found: {self.catalog_path}")
+            df = pd.read_csv(self.catalog_path)
+            if "path" not in df.columns:
+                raise ValueError(f"Catalog CSV {self.catalog_path} must have a 'path' column.")
+            image_paths = [Path(p) for p in df["path"].tolist()]
+        else:
+            image_paths = sorted(
+                path
+                for path in self.image_dir.rglob("*")
+                if path.is_file() and path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
+            )
+
         if not image_paths:
-            raise ValueError(f"No supported images found under {self.image_dir}")
+            raise ValueError(f"No supported images found. Check image_dir or catalog.")
 
         pairs: list[tuple[Path, Path]] = []
-        for image_path in image_paths:
-            relative = image_path.relative_to(self.image_dir)
+        for path in image_paths:
+            # Ensure path is absolute for processing
+            image_path = path if path.is_absolute() else self.image_dir / path
+            
+            # Find the relative path to resolve the mask
+            if image_path.is_relative_to(self.image_dir):
+                relative = image_path.relative_to(self.image_dir)
+            else:
+                # If it's not relative to image_dir, we assume the catalog 
+                # paths themselves are relative to image_dir if they weren't absolute
+                relative = path
+
             mask_path = self._resolve_mask_path(relative)
             pairs.append((image_path, mask_path))
         return pairs
@@ -229,6 +250,7 @@ def build_segmentation_dataloader(data_config: dict[str, Any]) -> DataLoader:
         data_config["mask_dir"],
         image_size=int(data_config["image_size"]),
         n_channels=int(data_config["n_channels"]),
+        catalog_path=data_config.get("catalog_path"),
     )
     return DataLoader(
         dataset,
