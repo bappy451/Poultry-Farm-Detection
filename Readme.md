@@ -290,6 +290,30 @@ When passing paths or string values to the wrapper scripts, it is highly recomme
 
 ---
 
+## 🎯 Downstream Fine-tuning
+
+The pipeline supports fine-tuning pretrained YOLO models (like YOLOv8/v11/v26) on custom segmentation datasets. This is particularly useful for adapting foundation models to specific poultry house architectures or image conditions.
+
+### 1. Dataset Preparation
+The fine-tuning module expects a COCO segmentation dataset. It will automatically convert this to the YOLO format and restructure the directories.
+
+```bash
+# Run the preparation script
+python -m downstream_finetune --prepare-only --data-dir Data/poultry_houses_Training
+```
+
+### 2. Running Fine-tuning
+Once the data is prepared, you can start the training. By default, it uses `Data/yolo26l-seg.pt` and `Data/poultry_houses_Training/data.yaml`.
+
+```bash
+# Start fine-tuning with default parameters
+python -m downstream_finetune --epochs 100 --batch 8 --imgsz 640
+```
+
+The results will be saved in `runs/downstream/finetune_yolo26l`.
+
+---
+
 ## 🧪 Testing & Validation
 
 The codebase maintains rigorous quality standards, informed by Test-Driven Development (TDD). 
