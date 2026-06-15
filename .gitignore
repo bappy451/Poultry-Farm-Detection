@@ -25,6 +25,7 @@ tmp/
 **/tmp/
 tmp*/
 **/tmp*/
+**/Data/
 
 runs/
 trained_models/
