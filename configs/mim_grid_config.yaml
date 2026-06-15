@@ -4,7 +4,7 @@ data:
   image_size: 224
   n_channels: 3
   batch_size: 64
-  num_workers: 8
+  num_workers: 12
 
 runtime:
   device: auto
