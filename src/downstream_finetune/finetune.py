@@ -4,6 +4,8 @@ import torch
 from pathlib import Path
 from ultralytics import YOLO
 
+from .finetune_resnet50 import train_resnet50_segmentation
+
 def load_spark_backbone_into_yolo(yolo_model, spark_backbone_path):
     """
     Loads SparK pretrained backbone weights into a YOLO model.
@@ -80,18 +82,38 @@ def finetune_with_config(config_path):
     output_base.mkdir(parents=True, exist_ok=True)
 
     for m_cfg in models_to_train:
-        model_path = m_cfg['path']
-        model_name = m_cfg.get('name', Path(model_path).stem)
+        model_path = m_cfg.get('path')
+        model_name = m_cfg.get('name', Path(model_path).stem if model_path else 'model')
         is_spark = m_cfg.get('is_spark', False)
+        is_random = m_cfg.get('is_random', False)
         base_yolo = m_cfg.get('base_yolo', 'yolo11l-seg.pt')
+        model_type = m_cfg.get('type', 'yolo')
 
-        print(f"\n--- Training Model: {model_name} ---")
+        print(f"\n--- Training Model: {model_name} ({model_type}) ---")
         
+        if model_type == 'resnet50':
+            # Use ResNet50 segmentation trainer
+            train_resnet50_segmentation(
+                data_yaml=str(data_yaml),
+                model_weights=model_path,
+                output_dir=str(output_base / model_name),
+                epochs=training_params.get('epochs', 50),
+                batch_size=training_params.get('batch', 16),
+                imgsz=training_params.get('imgsz', 640),
+                pretrained=m_cfg.get('pretrained', False) or (not is_spark and not is_random)
+            )
+            continue
+
+        # YOLO Training
         if is_spark:
             # Load a base YOLO model first, then inject SparK weights
             model = YOLO(base_yolo)
             model = load_spark_backbone_into_yolo(model, model_path)
+        elif is_random:
+            # Load architecture only (random weights)
+            model = YOLO(model_path)
         else:
+            # Load pretrained YOLO weights
             model = YOLO(model_path)
 
         # Run training

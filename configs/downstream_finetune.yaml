@@ -11,6 +11,7 @@ training:
 
 
 models:
+  # YOLO SparK Experiments
   - name: yolo11l_spark
     path: trained_models/spark-search/edeb5fe660d5_yolo11l_fp16/backbone_dense_ep4.pt
     is_spark: true
@@ -19,7 +20,34 @@ models:
     path: trained_models/spark-search/d979c75c9194_yolov26l_fp16/backbone_dense_ep4.pt
     is_spark: true
     base_yolo: trained_models/01_models/yolo26l-seg.pt
+
+  # ResNet50 SparK Experiments
+  - name: resnet50_spark
+    type: resnet50
+    path: trained_models/e15841a515ed_resnet50_fp16/e15841a515ed_resnet50_fp16/backbone_dense_ep7.pt
+    is_spark: true
+
+  # ImageNet Pretrained Baselines
   - name: yolo11l_pretrained
     path: trained_models/01_models/yolo11l-seg.pt
   - name: yolo26l_pretrained
     path: trained_models/01_models/yolo26l-seg.pt
+  - name: resnet50_pretrained
+    type: resnet50
+    pretrained: true
+
+  # Random Initialization Baselines (Non-trained)
+  - name: yolo11l_random
+    path: yolo11l-seg.yaml
+    is_random: true
+  - name: yolo26l_random
+    path: yolo26l-seg.yaml
+    is_random: true
+  - name: resnet50_random
+    type: resnet50
+    is_random: true
+
+  # Placeholder for MIM SSL experiments (add paths when training completes)
+  # - name: resnet50_mim
+  #   type: resnet50
+  #   path: trained_models/mim-search/...
