@@ -1,15 +1,16 @@
 data:
   image_dir: E:\MS_tiles_512_256_jpg
+  catalog_path: ./trained_models/data_catalog.csv
   image_size: 224
   n_channels: 3
   batch_size: 64
-  num_workers: 20
+  num_workers: 12
 
 runtime:
   device: auto
   seed: 27
   output_dir: ./runs/ssl-grid-search
-  epochs: 2
+  epochs: 10
 
 grid_search:
   # ViT variants: S (Small), B (Base), L (Large), H (Huge)

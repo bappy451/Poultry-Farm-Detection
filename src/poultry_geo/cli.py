@@ -221,6 +221,27 @@ def build_parser() -> argparse.ArgumentParser:
     stitch_parser.add_argument("input_dir")
     stitch_parser.add_argument("output_geotiff")
 
+    catalog_parser = _add_command_parser(
+        subparsers,
+        "catalog-dataset",
+        help_text="Create a CSV catalog of image paths for optimized dataloading.",
+        description=dedent(
+            """
+            Scan a directory for supported imagery and save the paths to a CSV catalog.
+            This catalog can be used by dataloaders to skip the slow file-system scan 
+            phase, which is especially useful for huge datasets (5M+ images).
+            """
+        ).strip(),
+        epilog=dedent(
+            """
+            Example:
+              poultry-geo catalog-dataset ./data/tiles ./data/catalog.csv
+            """
+        ).strip(),
+    )
+    catalog_parser.add_argument("data_root")
+    catalog_parser.add_argument("output_csv")
+
     boundary_parser = _add_command_parser(
         subparsers,
         "create-boundaries",
@@ -816,6 +837,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "stitch":
             path = stitch_geotiff_tiles(args.input_dir, args.output_geotiff)
             print(f"Stitched GeoTIFF written to {path}")
+            return 0
+
+        if args.command == "catalog-dataset":
+            from poultry_geo.naip_data import create_dataset_catalog
+            create_dataset_catalog(args.data_root, args.output_csv)
             return 0
 
         if args.command == "create-boundaries":

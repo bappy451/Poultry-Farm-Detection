@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import numpy as np
+import pandas as pd
 import torch
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
@@ -31,6 +32,7 @@ class NAIPDataset(Dataset[dict[str, Any]]):
         precision: str = "fp32",
         augment: bool = True,
         files: Sequence[str | Path] | None = None,
+        catalog_path: str | Path | None = None,
     ) -> None:
         self.root = Path(root).expanduser().resolve()
         if not self.root.exists():
@@ -49,6 +51,7 @@ class NAIPDataset(Dataset[dict[str, Any]]):
         self.dtype = PRECISION_DTYPES[precision]
         self.precision = precision
         self.augment = bool(augment)
+        self.catalog_path = Path(catalog_path) if catalog_path else None
         self.files = self._resolve_files(files)
         self._expected_channels = channels or self._inspect_channel_count(self.files[0])
 
@@ -92,32 +95,32 @@ class NAIPDataset(Dataset[dict[str, Any]]):
         }
 
     def _resolve_files(self, files: Sequence[str | Path] | None) -> list[Path]:
-        if files is None:
+        if files is not None:
+            resolved = sorted(Path(path) for path in files)
+        elif self.catalog_path is not None:
+            if not self.catalog_path.exists():
+                raise FileNotFoundError(f"Catalog file not found: {self.catalog_path}")
+            df = pd.read_csv(self.catalog_path)
+            if "path" not in df.columns:
+                raise ValueError(f"Catalog CSV {self.catalog_path} must have a 'path' column.")
+            resolved = [Path(p) for p in df["path"].tolist()]
+        else:
             resolved = sorted(
                 path
                 for path in self.root.rglob("*")
                 if path.is_file() and path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
             )
-        else:
-            resolved = sorted(Path(path) for path in files)
-            for path in resolved:
-                if not path.is_absolute():
-                    path = self.root / path
-                if not path.exists():
-                    raise FileNotFoundError(f"NAIP image does not exist: {path}")
-                if path.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
-                    raise ValueError(
-                        f"Unsupported image extension '{path.suffix}' for '{path}'."
-                    )
-            resolved = [
-                path if path.is_absolute() else self.root / path
-                for path in resolved
-            ]
+
+        # Ensure all paths are absolute
+        resolved = [
+            path if path.is_absolute() else self.root / path
+            for path in resolved
+        ]
 
         if not resolved:
             supported = ", ".join(sorted(SUPPORTED_IMAGE_EXTENSIONS))
             raise ValueError(
-                f"No supported imagery found under {self.root}. Supported extensions: {supported}"
+                f"No supported imagery found. Check root: {self.root} or catalog: {self.catalog_path}"
             )
         return resolved
 
@@ -185,6 +188,7 @@ def get_dataloaders(
     precision: str = "fp32",
     num_workers: int = 4,
     prefetch_factor: int = 2,
+    catalog_path: str | Path | None = None,
 ) -> tuple[DataLoader, DataLoader]:
     """Build leakage-resistant train and validation loaders for nested NAIP tiles."""
 
@@ -203,6 +207,7 @@ def get_dataloaders(
         channels=channels,
         precision=precision,
         augment=False,
+        catalog_path=catalog_path,
     )
     train_files, val_files = _split_files_by_parent(
         catalog.files,
@@ -462,3 +467,26 @@ def _random_bool() -> bool:
 
 def _uniform(low: float, high: float) -> float:
     return float(torch.empty(()).uniform_(low, high).item())
+
+
+def create_dataset_catalog(root: str | Path, output_path: str | Path) -> None:
+    """Scan a directory for supported imagery and save the paths to a CSV catalog."""
+    root_path = Path(root).expanduser().resolve()
+    if not root_path.is_dir():
+        raise ValueError(f"Catalog root must be a directory: {root_path}")
+
+    print(f"Scanning {root_path} for imagery...")
+    # Using a list comprehension for speed, but filtering as we go
+    files = []
+    for p in root_path.rglob("*"):
+        if p.is_file() and p.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS:
+            # Save path relative to root to make the catalog portable
+            files.append(str(p.relative_to(root_path)))
+
+    files.sort()
+    df = pd.DataFrame({"path": files})
+    
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, index=False)
+    print(f"Catalog created with {len(files)} files at {output_path}")
