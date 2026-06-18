@@ -1,50 +1,47 @@
-# Machine Learning & Self-Supervised Learning (SSL)
+# 03 - Machine Learning and Self-Supervised Learning (SSL)
 
-To minimize reliance on expensive human-annotated datasets, this project heavily leverages Self-Supervised Learning (SSL). SSL allows foundational models to learn rich, domain-specific visual representations directly from massive unannotated NAIP satellite imagery, resulting in superior performance when fine-tuned on the specialized task of poultry house segmentation.
+To minimize the project's reliance on expensive, human-annotated datasets, `poultry_geo` leverages Self-Supervised Learning (SSL). By training foundation models on vast quantities of unannotated NAIP satellite imagery, the models learn rich, domain-specific spatial features—resulting in superior performance, faster convergence, and reduced overfitting when later fine-tuned on the task of poultry house segmentation.
 
-## 1. Self-Supervised Learning Paradigms
+The project implements two state-of-the-art SSL paradigms, targeting both Vision Transformers (ViTs) and Convolutional Neural Networks (CNNs).
 
-The project implements two state-of-the-art SSL pipelines capable of pretraining different architectures directly on remote sensing data.
+## 1. Masked Image Modeling (MIM)
+**Target Architectures:** Vision Transformers (ViT-Tiny, Small, Base, Large)
+**Configuration Module:** `configs/mim_grid_config.yaml`
+**Implementation:** `poultry_geo.ssl_models.RemoteSensingMIMModel`
 
-### A. Masked Image Modeling (MIM)
-**Target Architectures:** Vision Transformers (ViT) - Tiny, Small, Base, Large, Huge.
-**Configuration:** `configs/ssl_grid_search.yaml`
+Masked Image Modeling is a Masked Autoencoder (MAE) approach suitable for non-hierarchical architectures.
 
-MIM is heavily inspired by Masked Autoencoders (MAE). The objective is to mask a substantial portion of an input tile and force the ViT to reconstruct the missing pixels.
+### Mechanism
+The input tile is divided into a grid of patches (e.g., 16x16 pixels). During training, a large portion of these patches are randomly dropped out. A lightweight decoder is then tasked with reconstructing the missing pixels based on the latent representation of the visible patches.
 
-- **Adapter & Backbone:** `RemoteSensingMIMModel` uses a lightweight 1x1 `BandAdapter` to project multi-band imagery (e.g., 4-channel RGB-NIR) into the embedding dimension of the `RemoteSensingViT`.
-- **Masking Strategy:** The grid search enforces a high **0.75 (75%) mask ratio**. Masking such a large portion of the image forces the model to learn holistic global structures (like the linear geometry of a farm) rather than relying on local pixel interpolation.
-- **Initialization:** According to the configuration (`pretrained: true`), these ViTs can be initialized from official ImageNet weights before undergoing domain adaptation on NAIP data, or they can be trained entirely from scratch.
+### Design Parameters
+- **Masking Ratio:** Set to a strict **0.75 (75%)**. By obscuring most of the image, the ViT cannot rely on local pixel interpolation. It is forced to learn holistic, high-level geometric structures (e.g., the long, linear nature of farm buildings, or the specific texture of agricultural fields).
+- **Initialization & Weights:** In the grid search config (`pretrained: true`), the ViTs are initialized with official ImageNet weights before undergoing domain adaptation on the NAIP data. This allows the transformer to utilize foundational edge-detection capabilities while learning the specific spectral properties of satellite imagery.
+- **Hyperparameters:** Driven by AdamW optimizer, Learning Rate of `1e-4`, weight decay of `0.05`, and utilizing `fp16` precision to maximize batch sizes (e.g., `batch_size: 64`). Deeper models leverage a `drop_path_rate: 0.1` for stochastic depth regularization.
 
-### B. Sparse Masked Modeling (SparK)
-**Target Architectures:** Hierarchical CNNs (ResNet50, YOLOv11l, YOLOv26l).
-**Configuration:** `configs/spark_grid_search.yaml`
+## 2. Sparse Masked Modeling (SparK)
+**Target Architectures:** Hierarchical CNNs (ResNet50, YOLO11l, YOLOv26l)
+**Configuration Module:** `configs/spark_grid_search.yaml`
+**Implementation:** `scripts/spark_grid_train.sh`
 
-While ViTs easily drop masked tokens, Convolutional Neural Networks (CNNs) require dense grids. If masks are filled with zeros, CNNs waste capacity learning the artificial geometric edges of the masks rather than the underlying imagery. SparK resolves this.
+While MIM works seamlessly for Transformers (which process unmasked tokens efficiently as sets), Convolutional Neural Networks operate on dense grids. If masks are represented as zero-filled pixels, CNNs waste processing power learning the artificial, sharp edges of the mask boundaries rather than the underlying terrain.
 
-- **Sparse Convolutions:** SparK utilizes sparse convolutions during the encoding phase. Masked regions are mathematically ignored, allowing the CNN to extract features only from the unmasked visible patches.
-- **Hierarchical Decoding:** A UNet-style decoder projects the multi-scale, sparse feature maps back onto a dense grid to reconstruct the original image.
-- **Initialization:** The SparK grid search configuration dictates `pretrained: [false]`. This ensures the CNN backbones are **randomly initialized**, allowing them to build representations derived *purely* from aerial imagery without the inductive bias of ImageNet's dog/cat/car dataset.
+### Mechanism
+SparK (Sparse Masked Modeling) extends the MAE paradigm to CNNs using 3D sparse convolutions. The network mathematically skips masked regions, treating the unmasked patches as a sparse point cloud. This enables standard CNNs (like YOLO's CSPDarknet) to act as efficient masked autoencoders. A UNet-style hierarchical decoder then reconstructs the masked parts at multiple spatial resolutions.
 
-## 2. Stateful Grid Search Orchestration
+### Design Parameters
+- **Masking Ratio:** Matches MIM at **0.75 (75%)**.
+- **Initialization & Weights:** Crucially, the `spark_grid_search.yaml` explicitly enforces `pretrained: false`. This means the CNN backbones are **randomly initialized**. They are forced to build feature representations derived *purely* from the NAIP aerial imagery, completely unburdened by the inductive bias of ImageNet's dog/cat/car dataset.
+- **Hyperparameters:** AdamW optimizer, Learning Rate of `4e-4`, weight decay of `0.05`, and `fp16` precision (scaling up to `batch_size: 128` depending on hardware).
 
-Both SSL pipelines employ robust grid search frameworks (`ssl_grid_search.py`, `spark_grid_search.py`).
+## 3. Stateful Grid Search Orchestration
+Self-Supervised Learning requires extensive hyperparameter tuning. However, executing multiple large models in parallel via multiprocessing rapidly exhausts GPU VRAM, causing OOM kernel crashes.
 
-- **Sequential Processing:** Because GPU VRAM is highly constrained, hyperparameter permutations are evaluated sequentially, avoiding the OOM crashes inherent to parallel multiprocessing.
-- **Statefulness:** The pipeline tracks optimizer states, learning rates, and schedulers incrementally. If an external event interrupts the run, re-executing the CLI command resumes the epoch immediately where it stopped.
-- **Hyperparameter Sweep:** Evaluates variables including learning rates (e.g., `0.0001` to `0.0004`), precisions (`fp32`, `fp16`, `bf16`), optimizers (`adamw`, `adan`), and stochastic depth (`drop_path_rate: 0.1`).
+### Sequential & Stateful Execution
+The project employs robust grid search frameworks (`train_ssl_grid` and `spark_grid_train`).
+- **Sequential Looping:** Permutations (e.g., testing `fp32` vs `bf16`, or testing `freeze_backbone` variations) are queued and processed strictly sequentially.
+- **State Preservation:** Because long-running campaigns are vulnerable to OS updates or power loss, the loops are rigorously stateful. The optimizer states, epoch counts, and random seed states are continuously checkpointed. If the script is interrupted, executing the exact same CLI command will instantly resume the training at the exact epoch it failed, preventing the loss of hundreds of hours of GPU compute.
 
-## 3. Model Selection & Fine-Tuning
-
-Following pretraining, models are fine-tuned for binary semantic instance segmentation to detect poultry house roofs.
-
-### Target Frameworks
-1. **Ultralytics YOLO (Baseline & Production):** YOLO variants (v8, v11, v26) are prioritized for deployment due to their rapid inference speed and excellent hardware optimization.
-2. **Transformers (RT-DETR, Mask2Former):** Supported for scenarios demanding extreme accuracy at the cost of slower inference throughput.
-3. **SAM (Segment Anything Model):** Used strictly as a post-processing refinement tool (`sam.py`). YOLO/DETR provides a bounding box prompt to SAM, which dynamically generates an edge-snapped, ultra-precise polygon mask of the roof.
-
-### Fine-Tuning Configurations
-Controlled by `configs/downstream_finetune.yaml`:
-- **Ablation Studies:** The pipeline natively compares models initialized from standard COCO weights (e.g., `yolo11l_pretrained`) against those utilizing the custom SparK pretraining (`yolo11l_spark`).
-- **Memory Optimization:** Supports advanced memory saving techniques like freezing the foundational backbone and injecting **LoRA (Low-Rank Adaptation)** layers, allowing the model to adapt to segmentation tasks without catastrophic forgetting of the SSL pretraining.
-- **Standard Parameters:** Operates heavily around 640x640 image sizes across 50 to 100 epochs using augmented PyTorch dataloaders.
+## 4. Parameter-Efficient Fine-Tuning (PEFT)
+To train massive models (like ViT-Large) on consumer-grade hardware, the SSL framework natively supports Low-Rank Adaptation (LoRA) and NF4 (4-bit NormalFloat) quantization. 
+By activating `--use-lora` and `--freeze-backbone`, the core weights of the model are frozen, and only tiny adapter matrices are trained. This radically reduces VRAM consumption and prevents catastrophic forgetting of the SSL pretraining when shifting to downstream tasks.

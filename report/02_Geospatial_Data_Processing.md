@@ -1,27 +1,39 @@
-# Geospatial Data Processing
+# 02 - Geospatial Data Processing
 
-Processing satellite and aerial imagery introduces significant engineering and computational challenges. Traditional deep learning computer vision pipelines assume that individual inputs (like JPEGs) are small enough to fit entirely into RAM. However, geospatial rasters like NAIP GeoTIFFs can easily exceed several gigabytes, encapsulate multi-band spectral data (e.g., Red, Green, Blue, Near-Infrared), and embed complex coordinate reference systems (CRS).
+Processing high-resolution aerial imagery (such as NAIP GeoTIFFs) introduces unique engineering challenges that standard Deep Learning pipelines (designed for small JPEGs) cannot natively handle. The `poultry_geo` pipeline abstracts these challenges to ensure memory safety, coordinate accuracy, and maximal hardware utilization.
 
-The `poultry_geo` package abstracts this complexity, enabling seamless data flow from raw rasters into PyTorch tensors and back to georeferenced maps.
+## 1. GeoTIFF Slicing Strategy (`geotiff.py`)
+Neural networks require fixed-size inputs (e.g., 224x224, 256x256, 512x512). Generating these tiles from multi-gigabyte rasters is a major bottleneck.
 
-## 1. Slicing Strategy (`geotiff.py`)
-Neural networks require fixed-size inputs (e.g., 224x224, 256x256, 512x512). The pipeline handles this through high-performance slicing.
-- **Edge-Snapped No-Padding Slicing:** A naive slicer will zero-pad the edges of an image to fit a strict tile grid, introducing artificial black borders. These borders severely degrade model performance. The `geotiff.py` module mathematically shifts the final grid windows to snap exactly to the valid edge of the raster, ensuring every extracted tile contains 100% valid imagery.
-- **Multiprocessing (`--workers auto`):** To manage the immense I/O bottleneck of reading multi-gigabyte files, the slicer relies on tile-level multiprocessing. This allows simultaneous extractions of `.tif`, `.png`, or `.jpg` formats, drastically accelerating dataset preparation.
+### Edge-Snapped No-Padding Slicing
+A naive image slicer divides a raster into a strict grid. If the edge of the raster does not divide perfectly by the tile size, the slicer injects zero-padding (black borders). These artificial straight lines severely confuse neural networks and degrade model performance during training and inference. 
+- **The Solution:** The `geotiff.py` module mathematically shifts the final tile windows backward to "snap" exactly to the valid edge of the raster. Every extracted tile contains 100% valid imagery, ensuring no artificial artifacts are introduced into the dataset.
 
-## 2. Streaming Inference (`inference.py`)
-To perform inference across entire counties or states, loading the entire mosaic into GPU VRAM—or even system RAM—is impossible.
-- **Sliding-Window Inference:** The module natively streams chunks directly from the disk-backed GeoTIFF using `rasterio`. It pulls a tile, processes it through the segmentation model, records any detected polygons in georeferenced space, and immediately releases the memory before moving to the next stride.
-- **Strided Overlap:** Poultry houses situated on the boundary of two tiles might be sliced in half, leading to false negatives. The sliding window supports an overlapping stride (e.g., `window-size 3000` with `stride 2500`). This ensures that every geographic point is evaluated within the center of a receptive field at least once.
+### Tile-Level Multiprocessing
+To handle extreme I/O loads, slicing operations are parallelized across multiple CPU cores (`--workers auto`). Instead of processing one massive GeoTIFF entirely before moving to the next, the pipeline parallelizes the extraction of individual tile chunks, saturating NVMe/SSD read bandwidth and significantly accelerating dataset generation. Outputs are configurable to `.tif`, `.png`, or `.jpg`.
 
-## 3. Memory-Efficient Stitching
-When researchers need to generate intermediate visualizations or rebuild massive probability maps:
-- **Windowed Writing:** The `stitch` CLI command utilizes `rasterio`'s windowed writing API. It accepts a directory of smaller output tiles and places them directly into their correct spatial coordinate block on a massive, disk-backed GeoTIFF. This circumvents Out-Of-Memory (OOM) errors that plague `numpy.vstack()` based scripts.
+## 2. Streaming Inference on Massive Rasters (`inference.py`)
+Evaluating a 5GB county-level mosaic is impossible if the file is loaded into RAM all at once.
 
-## 4. PyTorch Data Loading (`naip_data.py`)
-To train models effectively, a highly optimized PyTorch `Dataset` and `DataLoader` are implemented.
-- **Dynamic File Handling:** `NAIPDataset` traverses recursively nested directory structures, natively ingesting RGB JPEGs/PNGs, multi-band GeoTIFFs, or uncompressed `CHW/HWC` numpy arrays.
-- **Augmentation Pipeline:** Training samples undergo synchronized random cropping, horizontal/vertical flipping across all active spectral bands, and channel-aware color jittering.
-- **Deterministic Validation:** The validation pipeline utilizes strict center-crops to ensure consistent metric tracking across epochs.
-- **Leakage Prevention:** Adjacent geographic tiles from the same source GeoTIFF are highly correlated. The dataset strictly splits Train and Validation datasets at the *parent source directory level*, preventing data leakage and artificially inflated accuracy metrics.
-- **Precision Modes:** Tensors can be dynamically cast during the dataloading phase to `fp32`, `fp16`, or `bf16` to accommodate mixed-precision training.
+### Chunked I/O and Windowed Execution
+The module relies heavily on `rasterio`'s `Window` API. It streams geographic chunks directly from the disk-backed GeoTIFF, passes the localized numpy array to the PyTorch/YOLO inference engine, maps the resulting bounding boxes to geographic coordinates, and then releases the memory. This guarantees the pipeline can run on systems with highly constrained RAM.
+
+### Strided Overlap for Detection Fidelity
+If a poultry house happens to lie exactly on the boundary between two adjacent tile crops, the model will see two halves of a building and fail to detect it (a false negative). 
+To prevent this, the inference engine supports an overlapping sliding window (e.g., extracting `3000x3000` windows, but striding by `2500` pixels). This guarantees that every geographical coordinate passes through the center of the model's receptive field at least once, ensuring complete detection coverage.
+
+## 3. Reconstructive Stitching
+When generating intermediate visualization maps, the pipeline provides a `stitch` command. Similar to slicing, it avoids `numpy.vstack()` (which attempts to hold the final stitched image in RAM). Instead, it pre-allocates an empty GeoTIFF matching the original dimensions on disk, and streams individual tiles directly into their correct spatial blocks, keeping memory overhead flat regardless of the output image size.
+
+## 4. PyTorch Dataloader (`naip_data.py`)
+Training modern networks requires a highly optimized PyTorch `Dataset` and `DataLoader`.
+
+### Multi-Modal Dynamic Handling
+The `NAIPDataset` natively traverses recursively nested directory structures. It intelligently handles RGB `.jpg` or `.png` files, multi-band `.tif` files (e.g., Red, Green, Blue, Near-Infrared), and uncompressed `.npy` arrays, normalizing all inputs to PyTorch's expected `[C, H, W]` tensor format.
+
+### Geographically Aware Augmentation & Splits
+- **Synchronized Augmentation:** During training, samples undergo synchronized random cropping, spatial flipping (horizontal and vertical), and channel-aware color jittering across all spectral bands. Validation samples undergo deterministic center crops to stabilize metric tracking.
+- **Leakage Prevention:** Adjacent geographical tiles from the same source raster are highly correlated. If an 80/20 split is applied randomly, identical visual features "leak" into the validation set, artificially inflating accuracy metrics. `NAIPDataset` prevents this by splitting data strictly at the *parent source directory level*.
+
+### Precision Controls
+To optimize GPU memory and throughput, the Dataloader supports on-the-fly casting to user-defined precisions (`fp32`, `fp16`, or `bf16`). Experimental `nf4` (4-bit NormalFloat) quantization is also supported to maximize batch sizes on constrained consumer hardware.
