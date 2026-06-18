@@ -35,3 +35,8 @@ This directory contains an extensive set of reports covering every aspect of the
    - Architectural constraints, stateful grid-search design, and CLI wrapper safety.
    - Information on test-driven development (140+ unit tests).
    - Future roadmap, including SAM2, multi-year temporal analysis, and cloud deployment.
+
+7. **[07 - Dataset Description and Data Engineering](./07_Dataset_Description.md)**
+   - Creation and processing of NAIP imagery for Self-Supervised Learning.
+   - Automated COCO to YOLO conversion for downstream segmentation datasets.
+   - Core data structures, augmentations, and PyTorch `DataLoader` mechanics.
