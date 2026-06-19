@@ -21,11 +21,12 @@ Whether you are training custom self-supervised models on remote sensing data or
 4. [Architecture & Modules](#-architecture--modules)
 5. [Cross-Platform Script Execution](#-cross-platform-script-execution)
 6. [Foundation Model Pretraining (SSL)](#-foundation-model-pretraining-ssl)
-7. [Monitoring & Visualization](#-monitoring--visualization)
-8. [CLI Reference Guide](#-cli-reference-guide)
-9. [Configuration-Driven Execution](#️-configuration-driven-execution)
-10. [Troubleshooting & Known Issues](#-troubleshooting--known-issues)
-11. [Testing & Validation](#-testing--validation)
+7. [MississippiFM](#-mississippifm)
+8. [Monitoring & Visualization](#-monitoring--visualization)
+9. [CLI Reference Guide](#-cli-reference-guide)
+10. [Configuration-Driven Execution](#️-configuration-driven-execution)
+11. [Troubleshooting & Known Issues](#-troubleshooting--known-issues)
+12. [Testing & Validation](#-testing--validation)
 
 ---
 
@@ -191,6 +192,62 @@ If you want to run a single experiment without a config file:
 # Linux
 ./scripts/train_spark.sh --data-root "./temp/test_512" --output-dir "./runs/spark-single" --backbone-type resnet50 --epochs 50 --verbose
 ```
+
+---
+
+## 🌊 MississippiFM
+
+MississippiFM is the overlap-aware foundation-model path added from the design prompts in `report/Prompts_for_MISSISSIPPI FM.pdf`. The goal is to exploit **known geographic overlap** between neighboring aerial tiles instead of pretending every crop is an independent scene.
+
+### What is implemented
+- `src/poultry_geo/mississippi_adjacency.py`: builds a lightweight adjacency CSV from existing tile filenames.
+- `src/poultry_geo/mississippi_data.py`: overlap-aware NAIP dataset with leakage-resistant raster splits and shared-patch indexing.
+- `src/poultry_geo/mississippi_models.py`: MississippiFM encoder with global, patch, overlap-alignment, Gram-anchoring, LoRA, and NF4 support.
+- The encoder can stay on the project’s custom ViT stack or opt into local `timm` DINOv3 backbones such as `vit_base_patch16_dinov3` through the Mississippi pretrain config.
+- `src/poultry_geo/train_mississippifm.py`: YAML-driven training loop with checkpointing, resume support, TensorBoard logging, and optional probe-based best-checkpoint selection.
+- `src/poultry_geo/evaluate_probes.py`: frozen-feature linear/shallow probes for classification, regression, and segmentation tasks.
+- `src/poultry_geo/geographic_benchmark.py`: held-out county / scale / temporal benchmark orchestration.
+
+### Data preparation
+Do not regenerate the six-million-tile corpus. Start from the already-sliced imagery and build adjacency metadata:
+
+```bash
+python scripts/create_adjacency_index.py ./tiles ./trained_models/mississippifm/adjacency.csv --overlap-ratio 0.5 --tile-size 512
+```
+
+### Training
+You can launch MississippiFM either through the main CLI or the dedicated script:
+
+```bash
+poultry-geo mississippi-pretrain configs/mississippi.yaml ./tiles ./trained_models/mississippifm/adjacency.csv ./trained_models/mississippifm/run_a --model-size vit_b --resume
+
+python scripts/train_mississippifm.py configs/mississippi.yaml ./tiles ./trained_models/mississippifm/adjacency.csv ./trained_models/mississippifm/run_a --model-size vit_b --resume
+```
+
+### Evaluation
+Frozen-feature probes and geographic benchmark runs are exposed both from the package CLI and script entrypoints:
+
+```bash
+poultry-geo mississippi-eval-probes configs/mississippi_probes.yaml ./trained_models/mississippifm/run_a/best.pt ./trained_models/mississippifm/run_a/probes --resume
+
+poultry-geo mississippi-eval-benchmark configs/mississippi_benchmark.yaml ./trained_models/mississippifm/run_a/best.pt ./trained_models/mississippifm/run_a/benchmark --resume
+
+python scripts/evaluate_probes.py configs/mississippi_probes.yaml ./trained_models/mississippifm/run_a/best.pt ./trained_models/mississippifm/run_a/probes
+
+python scripts/geographic_benchmark.py configs/mississippi_benchmark.yaml ./trained_models/mississippifm/run_a/best.pt ./trained_models/mississippifm/run_a/benchmark
+```
+
+The sample probe config includes:
+- poultry segmentation probes with Dice / mIoU / boundary F1
+- settlement-context classification with macro-F1
+- DOTA-style detection probes with AP50 and AP50:95
+- texture retrieval diagnostics with recall@k
+- context-augmentation diagnostics that compare base-image F1 against base-plus-context F1
+
+Artifacts are written under `trained_models/mississippifm/` with append-only command logging in `command.log`, matching the rest of the project.
+
+### Citation
+If you publish results from this overlap-aware foundation-model workflow, cite both the MississippiFM paper or report draft you are building from and the upstream datasets / model families you used during evaluation, especially DINOv3, NAIP, and any downstream benchmark datasets such as Agriculture-Vision, Inria, DOTA, or OpenEarthMap.
 
 ---
 

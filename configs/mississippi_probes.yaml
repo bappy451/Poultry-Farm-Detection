@@ -1,0 +1,53 @@
+selection_metric: macro_f1
+tasks:
+  - name: poultry_segmentation
+    task_type: segmentation
+    train_manifest: ./data/mississippifm/poultry_segmentation_train.csv
+    val_manifest: ./data/mississippifm/poultry_segmentation_val.csv
+    image_column: image_path
+    mask_column: mask_path
+    epochs: 8
+    batch_size: 4
+    learning_rate: 0.001
+    hidden_dim: 64
+    threshold: 0.5
+  - name: settlement_context
+    task_type: classification
+    train_manifest: ./data/mississippifm/settlement_context_train.csv
+    val_manifest: ./data/mississippifm/settlement_context_val.csv
+    image_column: image_path
+    label_column: label
+    epochs: 8
+    batch_size: 8
+    learning_rate: 0.001
+    hidden_dim: 128
+  - name: dota_oriented_detection
+    task_type: detection
+    train_manifest: ./data/mississippifm/dota_train.csv
+    val_manifest: ./data/mississippifm/dota_val.csv
+    image_column: image_path
+    boxes_column: boxes
+    epochs: 10
+    batch_size: 4
+    learning_rate: 0.001
+    hidden_dim: 128
+    threshold: 0.5
+    max_detections_per_image: 64
+    nms_iou_threshold: 0.5
+  - name: texture_retrieval
+    task_type: retrieval
+    train_manifest: ./data/mississippifm/texture_gallery.csv
+    val_manifest: ./data/mississippifm/texture_queries.csv
+    image_column: image_path
+    label_column: label
+    batch_size: 16
+  - name: context_augmentation
+    task_type: context_augmentation
+    train_manifest: ./data/mississippifm/context_train.csv
+    val_manifest: ./data/mississippifm/context_val.csv
+    image_column: image_path
+    context_image_column: context_image_path
+    label_column: label
+    epochs: 8
+    batch_size: 8
+    learning_rate: 0.001

@@ -15,14 +15,19 @@ dist/
 
 .DS_Store
 
-# Logs and temp working directories
+# Runtime logs and scratch space
+/command.log
 *.log
 *.log.*
-logs/
-**/logs/
-command.log
-tmp/
-**/tmp/
+*.tmp
+/log/
+/logs/
+/**/log/
+/**/logs/
+/tmp/
+/temp/
+/**/tmp/
+/**/temp/
 tmp*/
 **/tmp*/
 **/Data/
