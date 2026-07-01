@@ -9,46 +9,85 @@ from poultry_geo.spark import SparseTransformer
 from poultry_geo.spark_models import SparKNetwork
 from poultry_geo.models import BandAdapter
 
-def calculate_spark_loss(reconstructed: torch.Tensor, original: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+def calculate_spark_loss(reconstructed: torch.Tensor, original: torch.Tensor, mask: torch.Tensor, patch_size: int = 16) -> torch.Tensor:
     """
-    Computes the Mean Squared Error (MSE) reconstruction loss, restricted 
-    exclusively to the masked pixel regions.
-    
-    In SparK, we only penalize the model for incorrectly predicting the pixels 
-    it couldn't see during the forward pass.
+    Computes the L1 (Mean Absolute Error) reconstruction loss with 
+    Patch-wise Normalization, restricted exclusively to the masked pixel regions.
     
     Args:
         reconstructed: Output of the decoder [B, 3, H, W].
         original: The ground truth adapted image [B, 3, H, W].
         mask: Binary mask where 1 = masked (hidden).
+        patch_size: Size of the patches used for masking (usually 16 or 32).
     """
-    # Compute element-wise squared error
-    loss = F.mse_loss(reconstructed, original, reduction='none')
-    
     # Ensure mask matches spatial resolution if upsampling occurred
     if mask.shape[2:] != reconstructed.shape[2:]:
         mask = F.interpolate(mask, size=reconstructed.shape[2:], mode='nearest')
 
-    # Masked loss only: Average error across all hidden pixels
-    masked_loss = (loss * mask).sum() / (mask.sum() + 1e-6)
+    # Unfold both images into patches: [B, C*P*P, L] where L is number of patches
+    recon_patches = F.unfold(reconstructed, kernel_size=patch_size, stride=patch_size)
+    orig_patches = F.unfold(original, kernel_size=patch_size, stride=patch_size)
     
+    B, _, L = orig_patches.shape
+    C = original.shape[1]
+    P_sq = patch_size * patch_size
+
+    # Reshape to [B, C, P*P, L] to normalize PER CHANNEL
+    orig_patches = orig_patches.view(B, C, P_sq, L)
+    recon_patches = recon_patches.view(B, C, P_sq, L)
+    
+    # Patch-wise Normalization on target patches (Per Channel)
+    orig_mean = orig_patches.mean(dim=2, keepdim=True)
+    orig_var = orig_patches.var(dim=2, unbiased=False, keepdim=True)
+    orig_patches_norm = (orig_patches - orig_mean) / (orig_var + 1e-6).sqrt()
+    
+    # L1 Loss between reconstructed patches and NORMALIZED original patches
+    # Average over C and P*P dimensions to get [B, L]
+    loss_patches = (recon_patches - orig_patches_norm).abs().mean(dim=(1, 2))
+    
+    # Pool mask down to patch level: [B, L]
+    mask_patches = F.avg_pool2d(mask.float(), kernel_size=patch_size, stride=patch_size).view(mask.shape[0], -1)
+    
+    # Masked loss only
+    masked_loss = (loss_patches * mask_patches).sum() / (mask_patches.sum() + 1e-6)
     return masked_loss
 
 def translate_state_dict(sparse_state_dict: Dict[str, torch.Tensor], backbone_type: str = 'resnet50') -> Dict[str, torch.Tensor]:
     """
     Translates weights from a sparse encoder state dict back into the naming 
-    conventions used by standard dense backbones (e.g., torchvision ResNet).
-    
-    This allows us to pretrain sparsely and then load the resulting weights 
-    into a standard YOLO or Segmentation model without code modifications.
+    conventions used by standard dense backbones (e.g., torchvision ResNet or Ultralytics YOLO).
     """
     dense_state_dict = {}
+    is_yolo = "yolo" in backbone_type.lower()
+    
+    yolo_mapping = {
+        "stem.weight": "model.0.conv.weight",
+        "stem.ln.weight": "model.0.bn.weight",
+        "stem.ln.bias": "model.0.bn.bias",
+        "stage1.0.weight": "model.1.conv.weight",
+        "stage1.1.ln.weight": "model.1.bn.weight",
+        "stage1.1.ln.bias": "model.1.bn.bias",
+        "stage2.0.weight": "model.3.conv.weight",
+        "stage2.1.ln.weight": "model.3.bn.weight",
+        "stage2.1.ln.bias": "model.3.bn.bias",
+        "stage3.0.weight": "model.5.conv.weight",
+        "stage3.1.ln.weight": "model.5.bn.weight",
+        "stage3.1.ln.bias": "model.5.bn.bias",
+        "stage4.0.weight": "model.7.conv.weight",
+        "stage4.1.ln.weight": "model.7.bn.weight",
+        "stage4.1.ln.bias": "model.7.bn.bias",
+    }
+    
     for key, value in sparse_state_dict.items():
         new_key = key
         
-        # Strip the 'encoder.' prefix added by the SparK wrapper
         if new_key.startswith('encoder.'):
             new_key = new_key.replace('encoder.', '', 1)
+            
+        if is_yolo:
+            if new_key in yolo_mapping:
+                dense_state_dict[yolo_mapping[new_key]] = value
+            continue
             
         # ResNet naming: 'stageX' -> 'layerX'
         if 'stage' in new_key:
@@ -56,7 +95,6 @@ def translate_state_dict(sparse_state_dict: Dict[str, torch.Tensor], backbone_ty
             
         # Stem translation: handle SparseConv2d/LayerNorm vs standard Conv2d/BatchNorm
         if new_key.startswith('stem.'):
-            # Map our sequential stem indices back to torchvision resnet50 names
             if '0.weight' in new_key: new_key = 'conv1.weight'
             elif '1.ln.weight' in new_key: new_key = 'bn1.weight'
             elif '1.ln.bias' in new_key: new_key = 'bn1.bias'
@@ -79,13 +117,15 @@ class SparKConfig:
                  backbone_type: str = 'resnet50', 
                  precision: str = 'FP32',
                  lr: float = 1e-3,
-                 batch_size: int = 32):
+                 batch_size: int = 32,
+                 patch_size: int = 16):
         self.mask_ratio = mask_ratio
         self.sparse_engine = sparse_engine
         self.backbone_type = backbone_type
         self.precision = precision
         self.lr = lr
         self.batch_size = batch_size
+        self.patch_size = patch_size
 
 def train_one_step(model, optimizer, scaler, transformer, batch, config):
     """
@@ -113,7 +153,7 @@ def train_one_step(model, optimizer, scaler, transformer, batch, config):
             target = transformer.adapter(batch)
             
         # 4. Masked loss
-        loss = calculate_spark_loss(reconstructed, target, mask)
+        loss = calculate_spark_loss(reconstructed, target, mask, patch_size=config.patch_size)
         
     if config.precision == 'FP32':
         loss.backward()

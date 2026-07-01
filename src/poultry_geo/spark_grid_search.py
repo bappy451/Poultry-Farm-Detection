@@ -118,7 +118,15 @@ def _run_single_experiment(
             precision=precision.upper(),
             lr=float(grid["learning_rate"]),
             batch_size=int(experiment["data"].get("batch_size", 8)),
+            patch_size=int(grid.get("patch_size", 16)),
         )
+
+        catalog_path_str = experiment["data"].get("catalog_path")
+        if catalog_path_str:
+            cat_path = Path(catalog_path_str)
+            if not cat_path.exists():
+                print(f"Catalog {cat_path} not found. Auto-generating for {experiment['data']['image_dir']}...")
+                naip_data.create_dataset_catalog(experiment["data"]["image_dir"], cat_path)
 
         train_loader, _ = naip_data.get_dataloaders(
             experiment["data"]["image_dir"],
@@ -127,6 +135,7 @@ def _run_single_experiment(
             channels=in_channels,
             precision=precision,
             num_workers=int(experiment["data"]["num_workers"]),
+            catalog_path=catalog_path_str,
         )
 
         for epoch_index in range(run_state.start_epoch, total_epochs):
@@ -263,15 +272,7 @@ def _train_one_epoch(
             
             avg_loss_so_far = epoch_loss / max(total_batches, 1)
             lr = optimizer.param_groups[0]["lr"]
-            
-            detail = (
-                f"{model_name} | "
-                f"exp {experiment_index+1}/{total_experiments} | "
-                f"ep {epoch_index+1}/{total_epochs} | "
-                f"batch {batch_index}/{num_batches_safe} | "
-                f"loss {last_loss:.4f} (avg {avg_loss_so_far:.4f}) | "
-                f"lr {lr:.6f}"
-            )
+            detail = f"E{epoch_index+1}/{total_epochs} B{batch_index}/{num_batches_safe} L1:{last_loss:.4f} Avg:{avg_loss_so_far:.4f} LR:{lr:.1e}"
             progress_callback(completed_work, total_work, detail=detail)
 
         img = batch["image"].to(device, non_blocking=True)
@@ -283,8 +284,5 @@ def _train_one_epoch(
         epoch_loss += loss_val
         total_batches += 1
         last_loss = loss_val
-        
-        if batch_index % 10 == 0:
-            print(f"    batch {batch_index}/{num_batches} - Loss: {loss_val:.6f}")
 
     return epoch_loss / max(total_batches, 1)

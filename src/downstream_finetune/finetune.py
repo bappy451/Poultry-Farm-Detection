@@ -11,7 +11,7 @@ def load_spark_backbone_into_yolo(yolo_model, spark_backbone_path):
     Loads SparK pretrained backbone weights into a YOLO model.
     """
     print(f"Loading SparK backbone from {spark_backbone_path}...")
-    spark_state = torch.load(spark_backbone_path, map_location='cpu')
+    spark_state = torch.load(spark_backbone_path, map_location='cpu', weights_only=False)
     
     # If it's a full SparK checkpoint, extract the encoder
     if 'model_state_dict' in spark_state:

@@ -1,6 +1,6 @@
 data:
   image_dir: E:\MS_tiles_512_256_jpg
-  catalog_path: ./trained_models/data_catalog.csv
+  catalog_path: C:\Users\mza0288\Documents\Poultry-Farm-Detection\trained_models\data_catalog.csv
   image_size: 224
   n_channels: 3
   batch_size: 64
@@ -9,15 +9,15 @@ data:
 runtime:
   device: auto
   seed: 27
-  output_dir: ./runs/ssl-grid-search
-  epochs: 10
+  output_dir: ./runs/ssl-grid-search_MIM_new
+  epochs: 1
 
 grid_search:
   # ViT variants: S (Small), B (Base), L (Large), H (Huge)
   model_name:
-    - S
+    # - S
     - B
-    - L
+    # - L
     # - H
   
   use_lora:

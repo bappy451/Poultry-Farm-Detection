@@ -216,6 +216,15 @@ def _run_single_experiment(
         if hasattr(run_state, "scheduler_state") and run_state.scheduler_state:
             scheduler.load_state_dict(run_state.scheduler_state)
 
+        catalog_path_str = experiment["data"].get("catalog_path")
+        if catalog_path_str:
+            import poultry_geo.naip_data as naip_data
+            from pathlib import Path
+            cat_path = Path(catalog_path_str)
+            if not cat_path.exists():
+                print(f"Catalog {cat_path} not found. Auto-generating for {experiment['data']['image_dir']}...")
+                naip_data.create_dataset_catalog(experiment["data"]["image_dir"], cat_path)
+
         train_loader, _ = get_dataloaders(
             experiment["data"]["image_dir"],
             batch_size=int(experiment["data"]["batch_size"]),
@@ -225,6 +234,7 @@ def _run_single_experiment(
             channels=int(experiment["data"]["n_channels"]),
             precision=precision,
             num_workers=int(experiment["data"]["num_workers"]),
+            catalog_path=catalog_path_str,
         )
 
         for epoch_index in range(run_state.start_epoch, total_epochs):
@@ -388,14 +398,7 @@ def _train_one_epoch(
             avg_loss = total_loss / max(total_batches, 1)
             lr = optimizer.param_groups[0]["lr"]
             
-            detail = (
-                f"{model_name} | "
-                f"exp {experiment_index+1}/{total_experiments} | "
-                f"ep {epoch_index+1}/{total_epochs} | "
-                f"batch {batch_index}/{num_batches} | "
-                f"loss {last_loss:.4f} (avg {avg_loss:.4f}) | "
-                f"lr {lr:.6f}"
-            )
+            detail = f"E{epoch_index+1}/{total_epochs} B{batch_index}/{num_batches} L1:{last_loss:.4f} Avg:{avg_loss:.4f} LR:{lr:.1e}"
             progress_callback(completed_work, total_work, detail=detail)
 
         images = batch["image"].to(device=device, non_blocking=True)
@@ -426,9 +429,6 @@ def _train_one_epoch(
         total_loss += current_loss
         total_batches += 1
         last_loss = current_loss
-        
-        if batch_index % 10 == 0:
-            print(f"    batch {batch_index}/{num_batches} - Loss: {current_loss:.6f}")
 
     return total_loss / max(total_batches, 1)
 

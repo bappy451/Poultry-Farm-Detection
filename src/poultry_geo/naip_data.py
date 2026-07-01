@@ -52,14 +52,19 @@ class NAIPDataset(Dataset[dict[str, Any]]):
         self.precision = precision
         self.augment = bool(augment)
         self.catalog_path = Path(catalog_path) if catalog_path else None
-        self.files = self._resolve_files(files)
-        self._expected_channels = channels or self._inspect_channel_count(self.files[0])
+        
+        # Wrapping in a numpy array is CRITICAL for Windows PyTorch DataLoader performance.
+        # Pickling a 10M element python list to 4 workers takes minutes and crashes memory.
+        # By using dtype=str (fixed-length Unicode), it serializes instantly as a raw byte buffer!
+        self.files = np.array(self._resolve_files(files), dtype=str)
+        
+        self._expected_channels = channels or self._inspect_channel_count(str(self.files[0]))
 
     def __len__(self) -> int:
         return len(self.files)
 
     def __getitem__(self, index: int) -> dict[str, Any]:
-        path = self.files[index]
+        path = str(self.files[index])
         image = self._load_image(path)
         actual_channels = int(image.shape[0])
         if self.channels is not None and actual_channels != self.channels:
@@ -94,26 +99,28 @@ class NAIPDataset(Dataset[dict[str, Any]]):
             "path": str(path),
         }
 
-    def _resolve_files(self, files: Sequence[str | Path] | None) -> list[Path]:
+    def _resolve_files(self, files: Sequence[str | Path] | None) -> list[str]:
+        import os
         if files is not None:
-            resolved = sorted(Path(path) for path in files)
+            resolved = sorted(str(path) for path in files)
         elif self.catalog_path is not None:
             if not self.catalog_path.exists():
                 raise FileNotFoundError(f"Catalog file not found: {self.catalog_path}")
             df = pd.read_csv(self.catalog_path)
             if "path" not in df.columns:
                 raise ValueError(f"Catalog CSV {self.catalog_path} must have a 'path' column.")
-            resolved = [Path(p) for p in df["path"].tolist()]
+            resolved = sorted(df["path"].astype(str).tolist())
         else:
             resolved = sorted(
-                path
+                str(path)
                 for path in self.root.rglob("*")
                 if path.is_file() and path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
             )
 
-        # Ensure all paths are absolute
+        root_str = str(self.root)
+        # Ensure all paths are absolute using fast os.path string operations
         resolved = [
-            path if path.is_absolute() else self.root / path
+            path if os.path.isabs(path) else os.path.join(root_str, path)
             for path in resolved
         ]
 
@@ -124,8 +131,10 @@ class NAIPDataset(Dataset[dict[str, Any]]):
             )
         return resolved
 
-    def _inspect_channel_count(self, path: Path) -> int:
-        suffix = path.suffix.lower()
+    def _inspect_channel_count(self, path: str) -> int:
+        import os
+        _, ext = os.path.splitext(path)
+        suffix = ext.lower()
         if suffix in {".jpg", ".jpeg", ".png"}:
             return 3
         if suffix in {".tif", ".tiff"}:
@@ -140,8 +149,10 @@ class NAIPDataset(Dataset[dict[str, Any]]):
         array = np.load(path, mmap_mode="r", allow_pickle=False)
         return int(_array_to_chw(array, requested_channels=None, path=path).shape[0])
 
-    def _load_image(self, path: Path) -> torch.Tensor:
-        suffix = path.suffix.lower()
+    def _load_image(self, path: str) -> torch.Tensor:
+        import os
+        _, ext = os.path.splitext(path)
+        suffix = ext.lower()
         if suffix in {".jpg", ".jpeg", ".png"}:
             with Image.open(path) as source:
                 image = source.convert("RGB")
@@ -281,17 +292,23 @@ def get_dataloaders(
 
 
 def _split_files_by_parent(
-    files: Sequence[Path],
+    files: Sequence[str],
     *,
     root: Path,
     val_fraction: float,
     seed: int,
-) -> tuple[list[Path], list[Path]]:
-    grouped: dict[Path, list[Path]] = {}
+) -> tuple[list[str], list[str]]:
+    import os
+    from collections import defaultdict
+    grouped = defaultdict(list)
+    root_str = str(root)
+    
     for path in files:
-        group = path.parent if path.parent != root else path
-        grouped.setdefault(group, []).append(path)
-    groups = sorted(grouped)
+        parent = os.path.dirname(path)
+        group = parent if parent != root_str else path
+        grouped[group].append(path)
+        
+    groups = sorted(grouped.keys())
     if len(groups) < 2:
         raise ValueError(
             "At least two source-image parent groups are required for a train/validation split."
@@ -301,20 +318,23 @@ def _split_files_by_parent(
     rng.shuffle(groups)
     val_count = min(len(groups) - 1, max(1, round(len(groups) * val_fraction)))
     val_groups = set(groups[:val_count])
-    train_files = sorted(
-        path for group, paths in grouped.items() if group not in val_groups for path in paths
-    )
-    val_files = sorted(
-        path for group, paths in grouped.items() if group in val_groups for path in paths
-    )
-    return train_files, val_files
+    
+    train_files = []
+    val_files = []
+    for group, paths in grouped.items():
+        if group in val_groups:
+            val_files.extend(paths)
+        else:
+            train_files.extend(paths)
+            
+    return sorted(train_files), sorted(val_files)
 
 
 def _array_to_chw(
     array: np.ndarray,
     *,
     requested_channels: int | None,
-    path: Path,
+    path: str,
 ) -> np.ndarray:
     if array.ndim == 2:
         if requested_channels not in {None, 1}:
@@ -349,7 +369,7 @@ def _array_to_chw(
     return array if first_plausible else np.moveaxis(array, -1, 0)
 
 
-def _normalize_image_array(array: np.ndarray, *, path: Path) -> torch.Tensor:
+def _normalize_image_array(array: np.ndarray, *, path: str) -> torch.Tensor:
     if not np.issubdtype(array.dtype, np.number):
         raise ValueError(f"Image array must be numeric for '{path}', found {array.dtype}.")
     if np.issubdtype(array.dtype, np.integer):

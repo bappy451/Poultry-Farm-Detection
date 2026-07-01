@@ -40,3 +40,14 @@ This directory contains an extensive set of reports covering every aspect of the
    - Creation and processing of NAIP imagery for Self-Supervised Learning.
    - Automated COCO to YOLO conversion for downstream segmentation datasets.
    - Core data structures, augmentations, and PyTorch `DataLoader` mechanics.
+
+---
+
+## Supplementary Guides
+
+- **[NAIP Detection Script User Guide](../reports/naip_detection_guide.md)**
+  - Running YOLO11l (COCO) on raw Georgia NAIP GeoTIFFs in `E:\Test`.
+  - Sliding-window tile inference, cross-tile NMS, and CRS reprojection.
+  - Output CSV schema — pixel bbox, UTM coords, NAD83(2011) Georgia State Plane (EPSG:6444), WGS-84 lat/lon.
+  - Loading results in ArcGIS Pro and QGIS.
+

@@ -1,53 +1,107 @@
-data:
-  path: Data/downstream_data.yaml
+dataset:
+  train_dir: "C:/Users/mza0288/Documents/Poultry-Farm-Detection/temp/poultry_houses_train"
+  test_dir: "C:/Users/mza0288/Documents/Poultry-Farm-Detection/temp/poultry_houses_test"
+  val_split: 0.1
 
 training:
-  epochs: 50
-  batch: 8
+  epochs: 100
+  batch_size: 4
+  num_workers: 8
   imgsz: 640
-  project: trained_models/finetune_results
-  extra_args:
-    workers: 4
-
+  project_dir: "runs/downstream"
 
 models:
-  # YOLO SparK Experiments
-  - name: yolo11l_spark
-    path: trained_models/spark-search/edeb5fe660d5_yolo11l_fp16/backbone_dense_ep4.pt
-    is_spark: true
-    base_yolo: trained_models/01_models/yolo11l-seg.pt
-  - name: yolo26l_spark
-    path: trained_models/spark-search/d979c75c9194_yolov26l_fp16/backbone_dense_ep4.pt
-    is_spark: true
-    base_yolo: trained_models/01_models/yolo26l-seg.pt
-
-  # ResNet50 SparK Experiments
-  - name: resnet50_spark
-    type: resnet50
-    path: trained_models/e15841a515ed_resnet50_fp16/e15841a515ed_resnet50_fp16/backbone_dense_ep7.pt
+  # ==========================================
+  # YOLOv11 Models
+  # ==========================================
+  - name: "yolo11l_spark"
+    type: "yolo"
+    base_yolo: "yolo11l-seg.pt"
+    pretrained_weights: "C:/Users/mza0288/Documents/Poultry-Farm-Detection/trained_models/spark-search/6b3159be77eb_yolo11l_fp16/model_checkpoint.pt"
     is_spark: true
 
-  # ImageNet Pretrained Baselines
-  - name: yolo11l_pretrained
-    path: trained_models/01_models/yolo11l-seg.pt
-  - name: yolo26l_pretrained
-    path: trained_models/01_models/yolo26l-seg.pt
-  - name: resnet50_pretrained
-    type: resnet50
+  - name: "yolo11l_random"
+    type: "yolo"
+    base_yolo: "yolo11l-seg.yaml"
+    is_random: true
+
+  - name: "yolo11l_coco"
+    type: "yolo"
+    base_yolo: "yolo11l-seg.pt"
+  # ==========================================
+  # ViT-S Models
+  # ==========================================
+  - name: "vit_s_mim"
+    type: "vit"
+    embed_dim: 384
+    depth: 12
+    num_heads: 6
+    patch_size: 16
+    pretrained_weights: "C:/Users/mza0288/Documents/Poultry-Farm-Detection/trained_models/mim-search/2f4243bfe5f2_S_fp16/model_checkpoint.pt"
+    is_mim: true
+
+  - name: "vit_s_random"
+    type: "vit"
+    embed_dim: 384
+    depth: 12
+    num_heads: 6
+    patch_size: 16
+    is_random: true
+
+  - name: "vit_s_imagenet"
+    type: "vit"
+    embed_dim: 384
+    depth: 12
+    num_heads: 6
+    patch_size: 16
     pretrained: true
 
-  # Random Initialization Baselines (Non-trained)
-  - name: yolo11l_random
-    path: yolo11l-seg.yaml
-    is_random: true
-  - name: yolo26l_random
-    path: yolo26l-seg.yaml
-    is_random: true
-  - name: resnet50_random
-    type: resnet50
+  # ==========================================
+  # ViT-B Models
+  # ==========================================
+  - name: "vit_b_mim"
+    type: "vit"
+    embed_dim: 768
+    depth: 12
+    num_heads: 12
+    patch_size: 16
+    pretrained_weights: "C:/Users/mza0288/Documents/Poultry-Farm-Detection/trained_models/mim-search/d83405b7d470_B_fp16/model_checkpoint.pt"
+    is_mim: true
+
+  - name: "vit_b_random"
+    type: "vit"
+    embed_dim: 768
+    depth: 12
+    num_heads: 12
+    patch_size: 16
     is_random: true
 
-  # Placeholder for MIM SSL experiments (add paths when training completes)
-  # - name: resnet50_mim
-  #   type: resnet50
-  #   path: trained_models/mim-search/...
+  - name: "vit_b_imagenet"
+    type: "vit"
+    embed_dim: 768
+    depth: 12
+    num_heads: 12
+    patch_size: 16
+    pretrained: true
+  # ==========================================
+  # YOLO26 Models
+  # ==========================================
+  - name: "yolo26l_spark"
+    type: "yolo"
+    base_yolo: "yolo26l-seg.pt"
+    pretrained_weights: "C:/Users/mza0288/Documents/Poultry-Farm-Detection/trained_models/spark-search/9fdad2750c45_yolov26l_fp16/model_checkpoint.pt"
+    is_spark: true
+    is_random: false
+    
+  - name: "yolo26l_random"
+    type: "yolo"
+    base_yolo: "yolo26l-seg.yaml"
+    pretrained_weights: null
+    is_spark: false
+    is_random: true
+    
+  - name: "yolo26l_coco"
+    type: "yolo"
+    base_yolo: "yolo26l-seg.pt"
+
+  

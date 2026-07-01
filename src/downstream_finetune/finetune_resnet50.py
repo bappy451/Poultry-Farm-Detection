@@ -33,9 +33,16 @@ class YoloFormatSegmentationDataset(Dataset):
         self.nc = self.data_cfg.get("nc", 2)
         
         # Gather all valid images
-        self.img_files = []
-        for ext in ('.jpg', '.png', '.jpeg'):
-            self.img_files.extend(list(self.img_dir.glob(f"*{ext}")))
+        img_files_set = set()
+        for ext in ('.jpg', '.png', '.jpeg', '.JPG', '.PNG', '.JPEG'):
+            # On Windows, glob is case-insensitive, so *.jpg and *.JPG return the same files.
+            # Using a set ensures we don't duplicate them.
+            for f in self.img_dir.glob(f"*{ext}"):
+                img_files_set.add(f.resolve())
+        self.img_files = list(img_files_set)
+        
+        if not self.img_files:
+            raise RuntimeError(f"No images found in {self.img_dir}. Check your data.yaml '{split}' path.")
             
     def __len__(self):
         return len(self.img_files)
@@ -58,12 +65,23 @@ class YoloFormatSegmentationDataset(Dataset):
                     parts = line.strip().split()
                     if len(parts) >= 3:
                         class_id = int(parts[0])
-                        # YOLO format: class_id x1 y1 x2 y2 ... (normalized)
-                        coords = np.array([float(x) for x in parts[1:]]).reshape(-1, 2)
-                        # Denormalize
-                        coords[:, 0] *= w
-                        coords[:, 1] *= h
-                        coords = coords.astype(np.int32)
+                        if len(parts) == 5:
+                            # YOLO bounding box format: class_id cx cy bw bh
+                            cx, cy, bw, bh = [float(x) for x in parts[1:]]
+                            x1, y1 = cx - bw / 2, cy - bh / 2
+                            x2, y2 = cx + bw / 2, cy + bh / 2
+                            # Denormalize
+                            x1, x2 = x1 * w, x2 * w
+                            y1, y2 = y1 * h, y2 * h
+                            coords = np.array([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], dtype=np.int32)
+                        else:
+                            # YOLO polygon format: class_id x1 y1 x2 y2 ... (normalized)
+                            coords = np.array([float(x) for x in parts[1:]]).reshape(-1, 2)
+                            # Denormalize
+                            coords[:, 0] *= w
+                            coords[:, 1] *= h
+                            coords = coords.astype(np.int32)
+                            
                         # Draw polygon on mask. Classes are 1-indexed (0 is background)
                         cv2.fillPoly(mask, [coords], class_id + 1)
                         
@@ -156,7 +174,7 @@ def train_resnet50_segmentation(data_yaml, model_weights, output_dir, epochs=50,
     accumulation_steps = max(1, 8 // batch_size) # Aim for effective batch size of 8
     
     results = []
-    best_f1 = 0.0
+    best_f1 = -1.0
     
     for epoch in range(epochs):
         model.train()

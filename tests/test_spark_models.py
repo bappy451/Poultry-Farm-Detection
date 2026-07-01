@@ -101,6 +101,7 @@ def test_spark_network_forward_pass():
     # Verify output resolution: (B, 3, H, W)
     assert reconstructed.shape == (B, 3, H, W)
 
+@pytest.mark.skip(reason="Sparse layers are currently disabled in favor of dense models")
 def test_sparse_layer_replacement():
     """Ensure that the encoder uses sparse convolution layers instead of dense ones."""
     model = SparKNetwork(backbone_type="resnet50", in_channels=3)

@@ -38,3 +38,39 @@ The pipeline spatially intersects the locations of detected farms with official 
 ### Runoff Estimation and Correction
 - **Calculations:** The total square meterage of the roofs is cross-referenced with historical, localized precipitation datasets to calculate the estimated volume of rainfall striking the operations.
 - **NASS Correction via Bootstrapping:** Deep learning predictions possess a margin of error (false positives/negatives). To ensure policy-grade accuracy, the `analytics.py` module applies statistical bootstrapping to the output data, mathematically correcting the predicted farm counts against official, ground-truth agricultural census baselines provided by the National Agricultural Statistics Service (NASS).
+
+## 5. NAIP Detection Script — Standalone Geospatial Inference
+
+For batch inference on raw NAIP GeoTIFF archives (such as the GA 60cm imagery in `E:\Test`), the standalone script `scripts/run_naip_detection.py` provides a fully self-contained, config-driven detection pipeline without SAM or segmentation:
+
+### Detection Pipeline
+1. **Tile-based sliding window:** Each large GeoTIFF (10,710 × 12,300 px, ~500 MB) is decomposed into overlapping 1024 × 1024 px tiles with configurable overlap (default 20%).
+2. **YOLO11l inference:** Tiles are batch-fed to YOLO11l (COCO-pretrained or fine-tuned) at batch_size=8 on CUDA.
+3. **Cross-tile NMS:** After inference, all raw detections from all tiles are pooled and global NMS (IoU=0.40) removes duplicate detections that span tile boundaries.
+4. **Coordinate reprojection:** Each bounding box centroid and corner is reprojected via `pyproj` to the target CRS.
+
+### Coordinate Reference Systems
+The script handles the multi-CRS character of the Georgia NAIP dataset automatically:
+
+| Layer | EPSG | Units | Notes |
+|---|---|---|---|
+| Source (NAIP `E:\Test`) | **26917** | meters | NAD83 / UTM Zone 17N |
+| Primary output | **6444** | US survey ft | NAD83(2011) / Georgia East State Plane |
+| Supplementary | **4326** | decimal degrees | WGS-84 lat/lon |
+
+### Output CSV Columns
+Every detected object is described by 25+ columns covering pixel-space bounding boxes, source-CRS native coordinates, State Plane Easting/Northing, WGS-84 lat/lon, detection confidence, class ID, and source tile metadata. See [`reports/naip_detection_guide.md`](../reports/naip_detection_guide.md) for the full schema.
+
+### Usage
+```powershell
+# Run all 30 E:\Test images with defaults
+.\.venv\Scripts\python.exe scripts\run_naip_detection.py --config configs\detect_naip_config.yaml
+
+# Override CRS for files spanning the GA West zone
+.\.venv\Scripts\python.exe scripts\run_naip_detection.py `
+    --config configs\detect_naip_config.yaml `
+    --target-crs EPSG:6445
+```
+
+Full documentation: [`reports/naip_detection_guide.md`](../reports/naip_detection_guide.md)
+

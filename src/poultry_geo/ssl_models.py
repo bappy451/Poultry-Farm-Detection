@@ -892,7 +892,21 @@ class RemoteSensingMIMModel(nn.Module):
 
     @staticmethod
     def compute_masked_loss(reconstruction: torch.Tensor, target: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        loss = (reconstruction.float() - target.float()).pow(2).mean(dim=-1)
+        B, L, dim = target.shape
+        C = 3
+        P_sq = dim // C
+        
+        target_view = target.view(B, L, C, P_sq)
+        recon_view = reconstruction.view(B, L, C, P_sq)
+
+        # Patch-wise Normalization (Per Channel)
+        mean = target_view.mean(dim=-1, keepdim=True)
+        var = target_view.var(dim=-1, unbiased=False, keepdim=True)
+        target_norm = (target_view - mean) / (var + 1e-6).sqrt()
+        
+        # L1 (Mean Absolute Error) is preferred over MSE for multispectral imagery 
+        # (RGB+IR) as it is less sensitive to outliers caused by differing channel variances.
+        loss = (recon_view.float() - target_norm.float()).abs().mean(dim=(2, 3))
         return loss[mask].mean()
 
     def forward_with_intermediates(self, inputs: torch.Tensor) -> dict[str, torch.Tensor]:
