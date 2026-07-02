@@ -24,7 +24,6 @@ from poultry_geo.optimizers import build_optimizer
 
 REQUIRED_GRID_KEYS = (
     "model_name",
-    "pretrained",
     "mask_ratio",
     "optimizer",
     "precision",
@@ -79,6 +78,7 @@ def load_ssl_grid_search_config(config_path: str | Path) -> dict[str, Any]:
     data = config["data"]
     runtime = config["runtime"]
     grid = config["grid_search"]
+    grid.setdefault("pretrained", [False])
     
     for key in ("image_dir", "image_size", "n_channels", "batch_size", "num_workers"):
         if key not in data:

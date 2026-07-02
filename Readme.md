@@ -10,6 +10,8 @@ This project bridges the gap between exploratory data science and robust product
 
 **Context:** The primary goal of this tool is to identify and map poultry houses using high-resolution aerial imagery (NAIP). By extracting precise footprints and clustering them into active farm units, researchers and policymakers can model agricultural density, estimate roof runoff, and assess potential environmental impacts on local watersheds.
 
+For step-by-step commands, expected outputs, and troubleshooting, start with [report/08_Codebase_Runbook.md](/Users/abedinm/Desktop/01_MS_Code/Code/report/08_Codebase_Runbook.md).
+
 Whether you are training custom self-supervised models on remote sensing data or running bulk inference across terabytes of imagery, this pipeline provides a highly optimized, CLI-driven interface.
 
 ---
@@ -21,18 +23,19 @@ Whether you are training custom self-supervised models on remote sensing data or
 4. [Architecture & Modules](#-architecture--modules)
 5. [Cross-Platform Script Execution](#-cross-platform-script-execution)
 6. [Foundation Model Pretraining (SSL)](#-foundation-model-pretraining-ssl)
-7. [Monitoring & Visualization](#-monitoring--visualization)
-8. [CLI Reference Guide](#-cli-reference-guide)
-9. [Configuration-Driven Execution](#️-configuration-driven-execution)
-10. [Troubleshooting & Known Issues](#-troubleshooting--known-issues)
-11. [Testing & Validation](#-testing--validation)
+7. [MississippiFM](#-mississippifm)
+8. [Monitoring & Visualization](#-monitoring--visualization)
+9. [CLI Reference Guide](#-cli-reference-guide)
+10. [Configuration-Driven Execution](#️-configuration-driven-execution)
+11. [Troubleshooting & Known Issues](#-troubleshooting--known-issues)
+12. [Testing & Validation](#-testing--validation)
 
 ---
 
 ## ✨ Key Capabilities
 
 ### 🌍 Geospatial Data Processing
-- **High-Performance Slicing:** Efficiently slice massive GeoTIFFs into manageable tiles. Built-in **tile-level multiprocessing** ensures maximum CPU utilization even on single, monolithic files.
+- **High-Performance Slicing:** Efficiently slice massive GeoTIFFs into manageable tiles using no-padding, edge-snapped windows. Directory slicing uses **file-level multiprocessing**: one worker owns one full GeoTIFF from open through final tile write.
 - **Memory-Efficient Stitching:** Rebuild massive rasters from smaller tiles using **windowed writing**, circumventing the out-of-memory (OOM) errors common in naive GIS scripts.
 - **Format Conversion:** Rapidly convert GeoTIFFs to display-friendly formats (JPG/PNG) while normalizing data types.
 
@@ -94,6 +97,9 @@ py -3.12 -m venv .venv
 ## 🗂️ Project Layout
 
 - `src/poultry_geo/`: Structured production Python package.
+- `notebook/`: Flattened mirror of the original notebook tree with source-path prefixes for traceability.
+- `notebook_new/`: Newer notebook working set plus Jupyter checkpoint autosaves.
+- `report/`: Technical reports and the operational runbook.
 - `scripts/poultry_geo.py`: Direct terminal launcher.
 - `scripts/poultry_geo.*`: CLI entry point wrappers for Windows (`.cmd`/`.ps1`) and Linux (`.sh`).
 - `scripts/slice_tiles.*`: Wrappers for slicing GeoTIFFs into image tiles.
@@ -106,6 +112,8 @@ py -3.12 -m venv .venv
 - `scripts/train_spark.*`: Wrappers for single SparK SSL pretraining using CNNs.
 - `configs/`: YAML and JSON configuration files for automated pipelines and grid searches.
 - `tests/`: Unit tests for the extracted code and pipeline logic.
+- `../Data/Test_ms_ga/`: Provided GeoTIFFs for slicing, conversion, and inference testing.
+- `../Data/poultry_houses_Training/data.yaml`: Corrected YOLO training/validation dataset config.
 - `pyproject.toml`: Package metadata and console entrypoint definitions.
 - `requirements.txt`: Core installation dependencies.
 - `requirements-ml.txt`: Heavier ML installation dependencies (Torch, YOLO, etc.).
@@ -159,7 +167,7 @@ Define your hyperparameters in a YAML file, and the pipeline will run experiment
 *   **Windows:** `.\scripts\spark_grid_train.cmd --training-name "spark-search" --config configs/spark_grid_search.yaml --verbose`
 *   **Linux:** `./scripts/spark_grid_train.sh --training-name "spark-search" --config configs/spark_grid_search.yaml --verbose`
 
-> **Note:** Set `image_dir` in your config to the directory containing your tiles (e.g., `./temp/test_512`).
+> **Note:** Set `image_dir` in your config to the directory containing your tiles, such as `./tmp/tiles_256_png`.
 
 ### 2. Automated Sequential Campaign
 If you want to run both SparK and MIM pretraining back-to-back without manual intervention, use the provided campaign scripts in the root directory. These scripts will automatically:
@@ -191,6 +199,62 @@ If you want to run a single experiment without a config file:
 # Linux
 ./scripts/train_spark.sh --data-root "./temp/test_512" --output-dir "./runs/spark-single" --backbone-type resnet50 --epochs 50 --verbose
 ```
+
+---
+
+## 🌊 MississippiFM
+
+MississippiFM is the overlap-aware foundation-model path added from the design prompts in `report/Prompts_for_MISSISSIPPI FM.pdf`. The goal is to exploit **known geographic overlap** between neighboring aerial tiles instead of pretending every crop is an independent scene.
+
+### What is implemented
+- `src/poultry_geo/mississippi_adjacency.py`: builds a lightweight adjacency CSV from existing tile filenames.
+- `src/poultry_geo/mississippi_data.py`: overlap-aware NAIP dataset with leakage-resistant raster splits and shared-patch indexing.
+- `src/poultry_geo/mississippi_models.py`: MississippiFM encoder with global, patch, overlap-alignment, Gram-anchoring, LoRA, and NF4 support.
+- The encoder can stay on the project’s custom ViT stack or opt into local `timm` DINOv3 backbones such as `vit_base_patch16_dinov3` through the Mississippi pretrain config.
+- `src/poultry_geo/train_mississippifm.py`: YAML-driven training loop with checkpointing, resume support, TensorBoard logging, and optional probe-based best-checkpoint selection.
+- `src/poultry_geo/evaluate_probes.py`: frozen-feature linear/shallow probes for classification, regression, and segmentation tasks.
+- `src/poultry_geo/geographic_benchmark.py`: held-out county / scale / temporal benchmark orchestration.
+
+### Data preparation
+Do not regenerate the six-million-tile corpus. Start from the already-sliced imagery and build adjacency metadata:
+
+```bash
+python scripts/create_adjacency_index.py ./tiles ./trained_models/mississippifm/adjacency.csv --overlap-ratio 0.5 --tile-size 512
+```
+
+### Training
+You can launch MississippiFM either through the main CLI or the dedicated script:
+
+```bash
+poultry-geo mississippi-pretrain configs/mississippi.yaml ./tiles ./trained_models/mississippifm/adjacency.csv ./trained_models/mississippifm/run_a --model-size vit_b --resume
+
+python scripts/train_mississippifm.py configs/mississippi.yaml ./tiles ./trained_models/mississippifm/adjacency.csv ./trained_models/mississippifm/run_a --model-size vit_b --resume
+```
+
+### Evaluation
+Frozen-feature probes and geographic benchmark runs are exposed both from the package CLI and script entrypoints:
+
+```bash
+poultry-geo mississippi-eval-probes configs/mississippi_probes.yaml ./trained_models/mississippifm/run_a/best.pt ./trained_models/mississippifm/run_a/probes --resume
+
+poultry-geo mississippi-eval-benchmark configs/mississippi_benchmark.yaml ./trained_models/mississippifm/run_a/best.pt ./trained_models/mississippifm/run_a/benchmark --resume
+
+python scripts/evaluate_probes.py configs/mississippi_probes.yaml ./trained_models/mississippifm/run_a/best.pt ./trained_models/mississippifm/run_a/probes
+
+python scripts/geographic_benchmark.py configs/mississippi_benchmark.yaml ./trained_models/mississippifm/run_a/best.pt ./trained_models/mississippifm/run_a/benchmark
+```
+
+The sample probe config includes:
+- poultry segmentation probes with Dice / mIoU / boundary F1
+- settlement-context classification with macro-F1
+- DOTA-style detection probes with AP50 and AP50:95
+- texture retrieval diagnostics with recall@k
+- context-augmentation diagnostics that compare base-image F1 against base-plus-context F1
+
+Artifacts are written under `trained_models/mississippifm/` with append-only command logging in `command.log`, matching the rest of the project.
+
+### Citation
+If you publish results from this overlap-aware foundation-model workflow, cite both the MississippiFM paper or report draft you are building from and the upstream datasets / model families you used during evaluation, especially DINOv3, NAIP, and any downstream benchmark datasets such as Agriculture-Vision, Inria, DOTA, or OpenEarthMap.
 
 ---
 
@@ -235,6 +299,19 @@ poultry-geo stitch ./tiles reconstructed.tif
 
 # Extract boundary shapefiles from raw imagery extents
 poultry-geo create-boundaries ../Data/Raw ./boundaries
+```
+
+Slicing defaults to non-overlapping windows, snaps the last window to the image edge, and never writes zero padding. Use `--stride` only when intentional overlap is desired.
+
+The convenience wrapper logs automatically and uses the same implementation:
+
+```bash
+./scripts/slice_tiles.sh \
+  --input-dir ../Data/Test_ms_ga \
+  --output-dir ./tmp/tiles_256_png \
+  --tile-size 256 \
+  --format png \
+  --workers auto
 ```
 
 ### Inference & Post-Processing
@@ -295,7 +372,9 @@ When passing paths or string values to the wrapper scripts, it is highly recomme
 The pipeline supports fine-tuning pretrained YOLO models (like YOLOv8/v11/v26) on custom segmentation datasets. This is particularly useful for adapting foundation models to specific poultry house architectures or image conditions.
 
 ### 1. Dataset Preparation
-The fine-tuning module expects a COCO segmentation dataset. It will automatically convert this to the YOLO format and restructure the directories.
+The current local YOLO-format training data is configured at `../Data/poultry_houses_Training/data.yaml`. The audit verified that it resolves to 4,342 train images, 482 validation images, and 702 test images.
+
+If starting from a COCO segmentation dataset, the fine-tuning module can convert it to YOLO format and restructure the directories.
 
 ```bash
 # Run the preparation script
@@ -320,9 +399,15 @@ The codebase maintains rigorous quality standards, informed by Test-Driven Devel
 
 Run the test suite:
 ```bash
-pytest
+./.venv/bin/python -m pytest -q --tb=short --disable-warnings
 ```
-*The suite includes over 140 unit tests validating geospatial logic, coordinate transformations, multiprocessing locks, ML tensor shapes, and grid-search statefulness.*
+Latest local verification in this audit:
+
+```text
+177 passed, 11 skipped, 8 warnings
+```
+
+The suite validates geospatial windowing, conversion, inference, GIS export, command logging, ML tensor shapes, grid-search statefulness, and MississippiFM workflows.
 
 ---
 

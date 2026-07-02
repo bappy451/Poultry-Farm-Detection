@@ -9,7 +9,7 @@ Monitoring concentrated animal feeding operations, specifically poultry farms, i
 This project provides a production-grade, end-to-end geospatial machine learning pipeline. It successfully transitions exploratory data science from brittle, ad-hoc Jupyter Notebooks into a highly robust, modular Python package (`poultry_geo`) accompanied by a Command-Line Interface (CLI).
 
 It completely automates the workflow:
-1. **Ingestion & Preprocessing:** Handling massive GeoTIFFs, slicing them without edge-padding, and utilizing multiprocessing for high-throughput tile extraction.
+1. **Ingestion & Preprocessing:** Handling massive GeoTIFFs, slicing them without edge-padding, and using file-level multiprocessing for high-throughput tile extraction across GeoTIFF collections.
 2. **Self-Supervised Learning (SSL):** Training foundation models on unannotated imagery to learn semantic representations of geography.
 3. **Segmentation Fine-Tuning:** Specializing pretrained foundation models (YOLO variants, ResNet, DETR) to detect precise poultry house footprints.
 4. **Streaming Inference:** Running inferences across entire regions using strided, overlapping sliding windows on disk-backed rasters to prevent out-of-memory errors.
@@ -30,8 +30,10 @@ The system is divided into well-defined, testable modules under `src/poultry_geo
 The project has achieved its primary structural goals:
 - **Fully Projectized**: The R&D workflow is successfully packaged as `poultry_geo`, installable via `pip` and executable natively via a CLI on Windows, macOS, and Linux.
 - **Stable Tooling**: CLI wrappers ensure logging and cross-platform policy bypass without compromising system security.
+- **Operational Documentation**: `08_Codebase_Runbook.md` now provides step-by-step commands, expected outputs, and troubleshooting for the full codebase.
+- **Current Data Wiring**: `../Data/poultry_houses_Training/data.yaml` has been corrected to point to the actual training, validation, and test image folders under `/Users/abedinm/Desktop/01_MS_Code/Data`.
 - **Model Success**: Downstream evaluation confirms that Self-Supervised Learning (particularly YOLO11l via SparK) provides superior F1 scores (~0.9845) over baseline architectures.
-- **Robustness**: 140+ unit tests validate coordinate projections, multiprocessing thread safety, and tensor geometry.
+- **Robustness**: The latest local audit ran the full test suite with `177 passed, 11 skipped, 8 warnings`, covering coordinate projections, command logging, no-padding slicing, conversion, GIS export, tensor geometry, stateful training, and MississippiFM modules.
 
 ## 5. Documentation Structure
 To fully document the depth of this pipeline, the report is split into the following detailed sections:
@@ -40,3 +42,5 @@ To fully document the depth of this pipeline, the report is split into the follo
 - `04_Downstream_Fine_Tuning.md`: YOLO evaluation, metrics, and transfer learning results.
 - `05_GIS_PostProcessing_and_Analytics.md`: Spatial clustering, deduplication, and environmental calculations.
 - `06_Engineering_Design_and_Future_Plans.md`: Architectural choices, hardware constraints, and roadmap.
+- `07_Dataset_Description.md`: Data layout, YOLO data YAML, provided GeoTIFFs, and notebook collections.
+- `08_Codebase_Runbook.md`: Concrete setup and run instructions with expected artifacts.

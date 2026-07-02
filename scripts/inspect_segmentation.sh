@@ -123,7 +123,14 @@ setup_logging() {
     command_string+="${quoted_token}"
   done
 
-  exec > >(tee -a "${LOG_FILE}") 2>&1
+  if [[ "${POULTRY_GEO_LOG_WRAPPED:-0}" != "1" ]]; then
+    export POULTRY_GEO_LOG_WRAPPED="1"
+    set +e
+    "${BASH:-bash}" "$0" "${ORIGINAL_ARGS[@]}" 2>&1 | tee -a "${LOG_FILE}"
+    local wrapped_status=${PIPESTATUS[0]}
+    set -e
+    exit "${wrapped_status}"
+  fi
 
   echo
   echo "================================================================================"

@@ -1,0 +1,50 @@
+tasks:
+  - name: poultry_transfer
+    task_type: segmentation
+    manifest: ./data/mississippifm/poultry_benchmark_manifest.csv
+    image_column: image_path
+    mask_column: mask_path
+    split_columns:
+      - county
+      - gsd
+      - year
+    epochs: 6
+    batch_size: 4
+    learning_rate: 0.001
+    hidden_dim: 64
+    threshold: 0.5
+    min_train_samples: 4
+    min_val_samples: 1
+  - name: settlement_transfer
+    task_type: classification
+    manifest: ./data/mississippifm/settlement_benchmark_manifest.csv
+    image_column: image_path
+    label_column: label
+    split_columns:
+      - county
+      - state
+      - year
+    epochs: 6
+    batch_size: 8
+    learning_rate: 0.001
+    hidden_dim: 128
+    min_train_samples: 8
+    min_val_samples: 2
+  - name: dota_transfer
+    task_type: detection
+    manifest: ./data/mississippifm/dota_benchmark_manifest.csv
+    image_column: image_path
+    boxes_column: boxes
+    split_columns:
+      - county
+      - state
+      - year
+    epochs: 6
+    batch_size: 4
+    learning_rate: 0.001
+    hidden_dim: 128
+    threshold: 0.5
+    max_detections_per_image: 64
+    nms_iou_threshold: 0.5
+    min_train_samples: 8
+    min_val_samples: 2

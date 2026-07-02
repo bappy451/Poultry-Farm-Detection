@@ -29,6 +29,18 @@ All coordinate data generated from the imagery is re-projected on the fly to a l
 - **ESRI Shapefiles:** Detections are natively exported as point features (centroids), bounding boxes, or precise polygonal outlines.
 - **KML Output:** The `csv-to-kml` command generates Keyhole Markup Language files, allowing detection boundaries and farm clusters to be effortlessly overlaid and verified within Google Earth.
 
+Typical command sequence after inference:
+
+```bash
+poultry-geo centroid-suppress ./tmp/raw_detections.csv ./tmp/detections_centroid_clean.csv --distance-threshold 10
+poultry-geo mask-nms ./tmp/detections_centroid_clean.csv ./tmp/detections_mask_clean.csv --iou-threshold 0.5
+poultry-geo cluster-farms ./tmp/detections_mask_clean.csv ./tmp/farms.csv --eps-house 50 --min-samples 2
+poultry-geo export-polygons ./tmp/detections_mask_clean.csv ./tmp/shapefiles/polygons --crs EPSG:26916
+poultry-geo csv-to-kml ./tmp/detections_mask_clean.csv ./tmp/detections.kml
+```
+
+Expected artifacts include cleaned detection CSVs, farm-level CSVs, shapefile sidecars (`.shp`, `.shx`, `.dbf`, `.prj`), and optional KML review files.
+
 ## 4. County-Level Environmental Analytics
 The ultimate objective of the pipeline is environmental screening—specifically, assessing the potential volume of contaminated rainfall runoff entering local watersheds.
 
@@ -39,6 +51,12 @@ The pipeline spatially intersects the locations of detected farms with official 
 - **Calculations:** The total square meterage of the roofs is cross-referenced with historical, localized precipitation datasets to calculate the estimated volume of rainfall striking the operations.
 - **NASS Correction via Bootstrapping:** Deep learning predictions possess a margin of error (false positives/negatives). To ensure policy-grade accuracy, the `analytics.py` module applies statistical bootstrapping to the output data, mathematically correcting the predicted farm counts against official, ground-truth agricultural census baselines provided by the National Agricultural Statistics Service (NASS).
 
+Runoff screening and county aggregation are exposed from the CLI:
+
+```bash
+poultry-geo aggregate-counties ./tmp/detections_mask_clean.csv ./tmp/county_summary.csv
+poultry-geo runoff-screening ./tmp/county_summary.csv ./tmp/runoff_screening.csv
+```
 ## 5. NAIP Detection Script — Standalone Geospatial Inference
 
 For batch inference on raw NAIP GeoTIFF archives (such as the GA 60cm imagery in `E:\Test`), the standalone script `scripts/run_naip_detection.py` provides a fully self-contained, config-driven detection pipeline without SAM or segmentation:
@@ -74,3 +92,4 @@ Every detected object is described by 25+ columns covering pixel-space bounding 
 
 Full documentation: [`reports/naip_detection_guide.md`](../reports/naip_detection_guide.md)
 
+>>>>>>> 2ef15f3aff9fd61159d2d726212ebc0b75c804e9

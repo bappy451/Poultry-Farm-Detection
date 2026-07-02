@@ -242,6 +242,30 @@ def build_parser() -> argparse.ArgumentParser:
     catalog_parser.add_argument("data_root")
     catalog_parser.add_argument("output_csv")
 
+    mississippi_adjacency_parser = _add_command_parser(
+        subparsers,
+        "mississippi-create-adjacency",
+        help_text="Build a lightweight overlap adjacency index for existing NAIP tiles.",
+        description=dedent(
+            """
+            Parse existing tile filenames to recover raster identifiers and pixel offsets,
+            then emit a CSV adjacency index for overlap-aware MississippiFM training.
+
+            This command never re-slices imagery. It uses filename metadata only.
+            """
+        ).strip(),
+        epilog=dedent(
+            """
+            Example:
+              poultry-geo mississippi-create-adjacency tiles/ adjacency.csv --overlap-ratio 0.5
+            """
+        ).strip(),
+    )
+    mississippi_adjacency_parser.add_argument("input_dir")
+    mississippi_adjacency_parser.add_argument("output_csv")
+    mississippi_adjacency_parser.add_argument("--overlap-ratio", type=float, default=0.5)
+    mississippi_adjacency_parser.add_argument("--tile-size", type=int, default=512)
+
     boundary_parser = _add_command_parser(
         subparsers,
         "create-boundaries",
@@ -598,6 +622,80 @@ def build_parser() -> argparse.ArgumentParser:
     train_spark_parser.add_argument("--learning-rate", type=float, default=1e-3)
     train_spark_parser.add_argument("--device", default=None, help="Execution device, for example cpu, gpu, cuda:0, or mps.")
 
+    mississippi_pretrain_parser = _add_command_parser(
+        subparsers,
+        "mississippi-pretrain",
+        help_text="Train the MississippiFM overlap-aware SSL encoder from a YAML config.",
+        description=dedent(
+            """
+            Run overlap-aware MississippiFM pretraining using the adjacency index,
+            the overlap-aware dataset, and the multi-objective encoder/training loop.
+            """
+        ).strip(),
+        epilog=dedent(
+            """
+            Example:
+              poultry-geo mississippi-pretrain configs/mississippi.yaml tiles/ adjacency.csv trained_models/mississippifm/run_a --model-size vit_b
+            """
+        ).strip(),
+    )
+    mississippi_pretrain_parser.add_argument("config_path")
+    mississippi_pretrain_parser.add_argument("data_root")
+    mississippi_pretrain_parser.add_argument("adjacency_csv")
+    mississippi_pretrain_parser.add_argument("output_dir")
+    mississippi_pretrain_parser.add_argument("--model-size", default=None, choices=["vit_s", "vit_b", "vit_l"])
+    mississippi_pretrain_parser.add_argument("--lambda-patch", type=float, default=None)
+    mississippi_pretrain_parser.add_argument("--lambda-overlap", type=float, default=None)
+    mississippi_pretrain_parser.add_argument("--lambda-gram", type=float, default=None)
+    mississippi_pretrain_parser.add_argument("--resume", action="store_true")
+    mississippi_pretrain_parser.add_argument("--device", default=None)
+
+    mississippi_eval_probes_parser = _add_command_parser(
+        subparsers,
+        "mississippi-eval-probes",
+        help_text="Evaluate frozen MississippiFM features with downstream linear/shallow probes.",
+        description=dedent(
+            """
+            Load a frozen MississippiFM encoder checkpoint, attach lightweight probe heads,
+            and measure downstream representation quality across configured tasks.
+            """
+        ).strip(),
+        epilog=dedent(
+            """
+            Example:
+              poultry-geo mississippi-eval-probes configs/mississippi_probes.yaml trained_models/mississippifm/run_a/best.pt trained_models/mississippifm/run_a/probes --resume
+            """
+        ).strip(),
+    )
+    mississippi_eval_probes_parser.add_argument("config_path")
+    mississippi_eval_probes_parser.add_argument("checkpoint_path")
+    mississippi_eval_probes_parser.add_argument("output_dir")
+    mississippi_eval_probes_parser.add_argument("--resume", action="store_true")
+    mississippi_eval_probes_parser.add_argument("--device", default=None)
+
+    mississippi_eval_benchmark_parser = _add_command_parser(
+        subparsers,
+        "mississippi-eval-benchmark",
+        help_text="Run held-out geographic and scale-shift MississippiFM benchmarks.",
+        description=dedent(
+            """
+            Evaluate frozen MississippiFM features across held-out counties, scale bands,
+            temporal slices, or any other configured geographic grouping columns.
+            """
+        ).strip(),
+        epilog=dedent(
+            """
+            Example:
+              poultry-geo mississippi-eval-benchmark configs/mississippi_benchmark.yaml trained_models/mississippifm/run_a/best.pt trained_models/mississippifm/run_a/benchmark
+            """
+        ).strip(),
+    )
+    mississippi_eval_benchmark_parser.add_argument("config_path")
+    mississippi_eval_benchmark_parser.add_argument("checkpoint_path")
+    mississippi_eval_benchmark_parser.add_argument("output_dir")
+    mississippi_eval_benchmark_parser.add_argument("--resume", action="store_true")
+    mississippi_eval_benchmark_parser.add_argument("--device", default=None)
+
     train_parser = _add_command_parser(subparsers, "train-yolo", help_text="Train one or more Ultralytics YOLO models.")
     train_parser.add_argument("data_path")
     train_parser.add_argument("project_dir")
@@ -842,6 +940,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "catalog-dataset":
             from poultry_geo.naip_data import create_dataset_catalog
             create_dataset_catalog(args.data_root, args.output_csv)
+            return 0
+
+        if args.command == "mississippi-create-adjacency":
+            from poultry_geo.mississippi_adjacency import write_adjacency_index_csv
+
+            output = write_adjacency_index_csv(
+                args.input_dir,
+                args.output_csv,
+                overlap_ratio=args.overlap_ratio,
+                tile_size=args.tile_size,
+            )
+            print(f"Adjacency CSV written to {output}")
             return 0
 
         if args.command == "create-boundaries":
@@ -1392,6 +1502,72 @@ def main(argv: list[str] | None = None) -> int:
             with open(os.path.join(args.output_dir, "experiment_info.json"), "w") as f:
                 json.dump(experiment_info, f, indent=4)
 
+            return 0
+
+        if args.command == "mississippi-pretrain":
+            from poultry_geo.train_mississippifm import load_mississippifm_config, train_mississippifm
+
+            config = load_mississippifm_config(args.config_path)
+            if args.model_size is not None:
+                config.model_size = args.model_size
+            if args.lambda_patch is not None:
+                config.lambda_patch = args.lambda_patch
+            if args.lambda_overlap is not None:
+                config.lambda_overlap = args.lambda_overlap
+            if args.lambda_gram is not None:
+                config.lambda_gram = args.lambda_gram
+            config.output_dir = Path(args.output_dir)
+            summary = train_mississippifm(
+                config,
+                data_root=args.data_root,
+                adjacency_csv=args.adjacency_csv,
+                output_dir=args.output_dir,
+                resume=args.resume,
+                device=args.device,
+            )
+            print(
+                "mississippi-pretrain "
+                f"output_dir={summary.output_dir} "
+                f"epochs={summary.epochs} "
+                f"train_batches={summary.train_batches} "
+                f"val_batches={summary.val_batches} "
+                f"final_total_loss={summary.final_total_loss} "
+                f"final_val_total_loss={summary.final_val_total_loss}"
+            )
+            return 0
+
+        if args.command == "mississippi-eval-probes":
+            from poultry_geo.evaluate_probes import evaluate_mississippi_probes
+
+            summary = evaluate_mississippi_probes(
+                args.config_path,
+                checkpoint_path=args.checkpoint_path,
+                output_dir=args.output_dir,
+                resume=args.resume,
+                device=args.device,
+            )
+            print(
+                "mississippi-eval-probes "
+                f"output_dir={summary['output_dir']} "
+                f"aggregate_primary_score={summary['aggregate_primary_score']}"
+            )
+            return 0
+
+        if args.command == "mississippi-eval-benchmark":
+            from poultry_geo.geographic_benchmark import run_geographic_benchmark
+
+            summary = run_geographic_benchmark(
+                args.config_path,
+                checkpoint_path=args.checkpoint_path,
+                output_dir=args.output_dir,
+                resume=args.resume,
+                device=args.device,
+            )
+            print(
+                "mississippi-eval-benchmark "
+                f"output_dir={summary['output_dir']} "
+                f"tasks={','.join(sorted(summary['tasks']))}"
+            )
             return 0
 
         if args.command == "train-yolo":
