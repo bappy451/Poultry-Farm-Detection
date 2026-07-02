@@ -1,22 +1,21 @@
 data:
-  image_dir: E:\MS_tiles_512_256_jpg
-  catalog_path: ./trained_models/data_catalog.csv
-  image_size: 224
+  image_dir: E:\NAIP_Dataset_PH
+  catalog_path: C:\Users\mza0288\Documents\Poultry-Farm-Detection\trained_models\data_catalog.csv
+  image_size: 512
   n_channels: 3
-  batch_size: 128
+  batch_size: 32  # Reduced to 32 because 512x512 takes 4x more VRAM than 224x224
   num_workers: 12
 
 runtime:
   device: "auto"
   seed: 27
-  output_dir: "./runs/spark-grid-search"
-  epochs: 15
+  output_dir: "./runs/spark-grid-search_new"
+  epochs: 1
 
 grid_search:
-  model_name: ["yolo11l", "yolov26l"]
-  # model_name: ["resnet50", "yolo11l", "yolov26l"]
+  model_name: ["yolo11l"]
   learning_rate: [0.0004]
-  mask_ratio: [0.75]
+  mask_ratio: [0.7]
   precision: ["fp16"]
   optimizer: ["adamw"]
   weight_decay: [0.05]
@@ -24,4 +23,6 @@ grid_search:
   drop_path_rate: [0.0]
   freeze_backbone: [false]
   use_lora: [false]
-  pretrained: [false]
+  pretrained: [true]
+
+# .\scripts\spark_grid_train.ps1 -Config configs\spark_grid_search.yaml/

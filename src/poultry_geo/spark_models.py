@@ -207,40 +207,67 @@ class SparseSiLU(nn.Module):
 
 class SparseCSPDarkNetEncoder(nn.Module):
     """
-    A simplified CSPDarkNet sparse encoder (YOLOv8/v11 style).
-    
-    This architecture uses Cross-Stage Partial (CSP) concepts to maintain 
-    strong gradient flow while being executed sparsely on masked inputs.
+    A simplified CSPDarkNet sparse encoder (YOLOv8/v11 style) that matches 
+    the exact downsampling channel dimensions of Ultralytics YOLO models 
+    so that pretrained weights can be loaded.
     """
-    def __init__(self, in_channels=3, base_channels=64):
+    def __init__(self, in_channels=3, backbone_type="yolo11l"):
         super().__init__()
-        spconv_module = _refresh_spconv()
-        # YOLOv8/v11 stem uses stride=2 to halve spatial resolution immediately
-        if spconv_module is not None:
-            self.stem = spconv_module.SparseConv2d(in_channels, base_channels // 2, kernel_size=3, stride=2, padding=1)
-        else:
-            self.stem = nn.Conv2d(in_channels, base_channels // 2, kernel_size=3, stride=2, padding=1)
         
-        def make_stage(in_c, out_c, stride=2):
-            if spconv_module is not None:
-                return nn.Sequential(
-                    spconv_module.SparseConv2d(in_c, out_c, kernel_size=3, stride=stride, padding=1),
+        # YOLOv11 standard channel configurations (p1, p2, p3, p4, p5)
+        if backbone_type == "yolo11l":
+            ch = [64, 128, 256, 512, 512]
+        elif backbone_type == "yolo11m":
+            ch = [48, 96, 192, 384, 576]
+        else: # n / s
+            ch = [32, 64, 128, 256, 512]
+
+        self.encoder_channels = [ch[1], ch[2], ch[3], ch[4]]
+
+        if spconv is not None:
+            self.stem = nn.Sequential(
+                spconv.SparseConv2d(in_channels, ch[0], kernel_size=3, stride=2, padding=1),
+                SparseLayerNorm(ch[0]),
+                SparseSiLU(inplace=True)
+            )
+        else:
+            self.stem = nn.Sequential(
+                nn.Conv2d(in_channels, ch[0], kernel_size=3, stride=2, padding=1),
+                nn.BatchNorm2d(ch[0]),
+                nn.SiLU(inplace=True)
+            )
+        
+        def make_stage(in_c, out_c, next_in_c):
+            if spconv is not None:
+                layers = [
+                    spconv.SparseConv2d(in_c, out_c, kernel_size=3, stride=2, padding=1),
                     SparseLayerNorm(out_c),
                     SparseSiLU(inplace=True)
-                )
+                ]
+                if out_c != next_in_c:
+                    layers.extend([
+                        spconv.SubMConv2d(out_c, next_in_c, kernel_size=1),
+                        SparseLayerNorm(next_in_c),
+                        SparseSiLU(inplace=True)
+                    ])
             else:
-                return nn.Sequential(
-                    nn.Conv2d(in_c, out_c, kernel_size=3, stride=stride, padding=1),
+                layers = [
+                    nn.Conv2d(in_c, out_c, kernel_size=3, stride=2, padding=1),
                     nn.BatchNorm2d(out_c),
                     nn.SiLU(inplace=True)
-                )
+                ]
+                if out_c != next_in_c:
+                    layers.extend([
+                        nn.Conv2d(out_c, next_in_c, kernel_size=1),
+                        nn.BatchNorm2d(next_in_c),
+                        nn.SiLU(inplace=True)
+                    ])
+            return nn.Sequential(*layers)
 
-        # Build hierarchical stages (C1 to C4)
-        c1, c2, c3, c4 = base_channels, base_channels * 2, base_channels * 4, base_channels * 8
-        self.stage1 = make_stage(base_channels // 2, c1)
-        self.stage2 = make_stage(c1, c2)
-        self.stage3 = make_stage(c2, c3)
-        self.stage4 = make_stage(c3, c4)
+        self.stage1 = make_stage(ch[0], ch[1], ch[2])
+        self.stage2 = make_stage(ch[2], ch[2], ch[3])
+        self.stage3 = make_stage(ch[3], ch[3], ch[4])
+        self.stage4 = make_stage(ch[4], ch[4], ch[4])
 
     def forward(self, x):
         spconv_module = _refresh_spconv()
@@ -251,7 +278,6 @@ class SparseCSPDarkNetEncoder(nn.Module):
             H, W = spatial_shape[1], spatial_shape[2]
             dense_x = torch.zeros((B, C, H, W), device=features.device, dtype=features.dtype)
             
-            # Optimized Vectorization: Replace slow Python loop
             b = indices[:, 0].long()
             y = indices[:, 2].long()
             x_idx = indices[:, 3].long()
@@ -353,26 +379,21 @@ class SparKNetwork(nn.Module):
         if backbone_type == "resnet50":
             self.encoder = SparseResNetEncoder(in_channels=3, pretrained=pretrained)
             encoder_channels = [256, 512, 1024, 2048]
-        elif backbone_type == "yolo11l":
-            self.encoder = SparseCSPDarkNetEncoder(in_channels=3, base_channels=128)
-            encoder_channels = [128, 256, 512, 1024]
+        elif backbone_type.startswith("yolo11"):
+            self.encoder = SparseCSPDarkNetEncoder(in_channels=3, backbone_type=backbone_type)
+            encoder_channels = self.encoder.encoder_channels
             if pretrained:
-                self._load_yolo_pretrained(backbone_type, base_channels=128)
-        elif backbone_type == "yolov26l":
-            self.encoder = SparseCSPDarkNetEncoder(in_channels=3, base_channels=256)
-            encoder_channels = [256, 512, 1024, 2048]
-            if pretrained:
-                print("Warning: yolov26l not found in Ultralytics. Starting from scratch.")
+                self._load_yolo_pretrained(backbone_type)
         else:
             # Default to standard CSPDarkNet (e.g. YOLOv8n/s scale)
-            self.encoder = SparseCSPDarkNetEncoder(in_channels=3, base_channels=64)
-            encoder_channels = [64, 128, 256, 512]
+            self.encoder = SparseCSPDarkNetEncoder(in_channels=3, backbone_type="yolo11n")
+            encoder_channels = self.encoder.encoder_channels
             if pretrained:
                 print(f"Warning: Pretrained weights not yet supported for {backbone_type} in SparK. Starting from scratch.")
             
         self.decoder = HierarchicalDecoder(encoder_channels, out_channels=3)
 
-    def _load_yolo_pretrained(self, backbone_type: str, base_channels: int):
+    def _load_yolo_pretrained(self, backbone_type: str):
         """
         Helper to load YOLO weights from Ultralytics into our simplified encoder.
         """
@@ -381,26 +402,13 @@ class SparKNetwork(nn.Module):
             print(f"Loading pretrained {backbone_type} weights from Ultralytics...")
             # We download the classification model to get pure backbone weights
             # Names: yolo11n-cls.pt, yolo11s-cls.pt, etc.
-            model_variant = backbone_type.replace("yolo", "yolo11") # normalize name
-            if backbone_type == "yolo11l":
-                model_variant = "yolo11l"
-            
-            yolo = YOLO(f"{model_variant}-cls.pt")
-            # The backbone is in yolo.model.model[0:10] roughly
+            yolo = YOLO(f"{backbone_type}-cls.pt")
             yolo_state = yolo.model.state_dict()
             
-            # Map YOLO backbone to our simplified stages
-            # YOLO v11 backbone structure:
-            # 0: Conv (Stem)
-            # 2: C3k2 (Stage 1)
-            # 4: C3k2 (Stage 2)
-            # 6: C3k2 (Stage 3)
-            # 8: C3k2 (Stage 4)
-            
             mapping = {
-                "model.0.conv.weight": "encoder.stem.weight",
-                "model.0.bn.weight": "encoder.stem.ln.weight", # Approximate BN->LN
-                "model.0.bn.bias": "encoder.stem.ln.bias",
+                "model.0.conv.weight": "encoder.stem.0.weight",
+                "model.0.bn.weight": "encoder.stem.1.ln.weight",
+                "model.0.bn.bias": "encoder.stem.1.ln.bias",
                 
                 "model.1.conv.weight": "encoder.stage1.0.weight",
                 "model.1.bn.weight": "encoder.stage1.1.ln.weight",
@@ -422,10 +430,7 @@ class SparKNetwork(nn.Module):
             new_state = {}
             for k, v in yolo_state.items():
                 if k in mapping:
-                    target_key = mapping[k]
-                    # Since our encoder is simplified and uses spconv, we need to match the weight shape
-                    # spconv weights are typically the same as torch weights
-                    new_state[target_key] = v
+                    new_state[mapping[k]] = v
             
             msg = self.load_state_dict(new_state, strict=False)
             print(f"  YOLO pretrained weights loaded: {len(new_state)} tensors. Missing: {len(msg.missing_keys)}")

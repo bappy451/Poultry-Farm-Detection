@@ -47,7 +47,19 @@ Latest local verification for this codebase audit:
    - Automated COCO to YOLO conversion for downstream segmentation datasets.
    - Core data structures, augmentations, and PyTorch `DataLoader` mechanics.
 
+
 8. **[08 - Codebase Runbook: How to Run, Test, and Review Outputs](./08_Codebase_Runbook.md)**
    - Step-by-step setup for macOS, Linux, and Windows.
    - Concrete commands for slicing, conversion, YOLO/RT-DETR training, SSL, MississippiFM, inference, post-processing, GIS export, and plotting.
    - Expected outputs, logging behavior, troubleshooting, and current test evidence.
+---
+
+## Supplementary Guides
+
+- **[NAIP Detection Script User Guide](../reports/naip_detection_guide.md)**
+  - Running YOLO11l (COCO) on raw Georgia NAIP GeoTIFFs in `E:\Test`.
+  - Sliding-window tile inference, cross-tile NMS, and CRS reprojection.
+  - Output CSV schema — pixel bbox, UTM coords, NAD83(2011) Georgia State Plane (EPSG:6444), WGS-84 lat/lon.
+  - Loading results in ArcGIS Pro and QGIS.
+
+>>>>>>> 2ef15f3aff9fd61159d2d726212ebc0b75c804e9

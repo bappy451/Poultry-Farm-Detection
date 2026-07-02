@@ -2,54 +2,73 @@ from __future__ import annotations
 
 import os
 import sys
-import shutil
-import threading
-import time
 from contextlib import contextmanager
-from dataclasses import dataclass
-from typing import Iterator, Sequence, TextIO
+from collections.abc import Iterator, Sequence
+from typing import TextIO
 
-
-BAR_WIDTH = 32
-DEFAULT_REFRESH_SECONDS = 2.0
-
-
-@dataclass
-class ProgressState:
-    label: str
-    completed: int = 0
-    total: int | None = None
-    detail: str = ""
-    verbose: bool = False
+from rich.console import Console
+from rich.progress import (
+    Progress,
+    TextColumn,
+    BarColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+    SpinnerColumn,
+    MofNCompleteColumn,
+)
 
 
 class CommandProgress:
-    """Render command progress without claiming a percentage that is not known."""
+    def __init__(self, label: str, verbose: bool = False) -> None:
+        self.label = label
+        self.verbose = verbose
+        
+        import shutil
+        
+        # Bypass PowerShell Tee-Object piping by drawing directly to the active console buffer.
+        stream = sys.stdout
+        force_term = None
+        if os.name == "nt" and not stream.isatty():
+            try:
+                stream = open("CONOUT$", "w", encoding="utf-8")
+                force_term = True
+            except OSError:
+                pass
+                
+        # When run inside a PowerShell subprocess, Python often falsely detects the terminal
+        # width as 80 columns, causing Rich to aggressively truncate text into '...'.
+        # We forcefully override this to a wide layout so your text never truncates.
+        term_width = shutil.get_terminal_size(fallback=(160, 24)).columns
+        if term_width < 140:
+            term_width = 160
+            
+        console = Console(file=stream, force_terminal=force_term, width=term_width)
 
-    def __init__(
-        self,
-        label: str,
-        *,
-        stream: TextIO | None = None,
-        refresh_seconds: float = DEFAULT_REFRESH_SECONDS,
-        verbose: bool = False,
-    ) -> None:
-        self.state = ProgressState(label=label, verbose=verbose)
-        self.stream = stream or sys.stdout
-        self._live_stream = self._resolve_live_stream(self.stream)
-        self.refresh_seconds = refresh_seconds
-        self.started_at = time.perf_counter()
-        self._stop_event = threading.Event()
-        self._lock = threading.Lock()
-        self._thread: threading.Thread | None = None
-        self._pulse = 0
-        self._last_width = 0
-        self._last_lines = 0
+        # Create a highly modern, premium, and beautiful progress bar
+        self.progress = Progress(
+            SpinnerColumn(spinner_name="dots", style="bold bright_green"),
+            TextColumn("[bold bright_cyan]{task.description}"),
+            BarColumn(bar_width=20, complete_style="bright_green", finished_style="bold bright_green", pulse_style="bright_white"),
+            "[progress.percentage]{task.percentage:>3.1f}%",
+            "•",
+            MofNCompleteColumn(),
+            "•",
+            TextColumn("[dim]Elapsed:[/dim]"),
+            TimeElapsedColumn(),
+            "•",
+            TextColumn("[dim]ETA:[/dim]"),
+            TimeRemainingColumn(),
+            "•",
+            TextColumn("[bold bright_yellow]{task.fields[detail]}"),
+            console=console,
+            transient=False,
+            refresh_per_second=10,
+        )
+        self.task_id = None
+        self._log_path = os.environ.get("POULTRY_PROGRESS_LOG")
 
     def start(self) -> None:
-        self._write(self._render(), log_event=True)
-        self._thread = threading.Thread(target=self._refresh_loop, daemon=True)
-        self._thread.start()
+        self.progress.start()
 
     def update(
         self,
@@ -57,143 +76,44 @@ class CommandProgress:
         total: int | None = None,
         *,
         detail: str | None = None,
+        description: str | None = None,
     ) -> None:
-        with self._lock:
-            self.state.completed = max(0, completed)
-            if total is not None:
-                self.state.total = max(0, total)
-            if detail is not None:
-                self.state.detail = detail
-            completed_all = (
-                self.state.total is not None
-                and self.state.total > 0
-                and self.state.completed >= self.state.total
+        safe_detail = detail or ""
+        
+        if self.task_id is None:
+            # Initialize the task on first update
+            self.task_id = self.progress.add_task(
+                description or self.label, 
+                total=total or 100, 
+                detail=safe_detail
             )
-        self._write(self._render(), log_event=True, final=completed_all)
+            
+        if total is not None:
+            self.progress.update(self.task_id, total=total)
+            
+        if description is not None:
+            self.progress.update(self.task_id, description=description)
+            
+        self.progress.update(self.task_id, completed=completed, detail=safe_detail)
+        
+        # Optionally log progress to a file if requested by the environment
+        if self._log_path and completed % 10 == 0:
+            try:
+                with open(self._log_path, "a", encoding="utf-8") as f:
+                    f.write(f"[{self.label}] {completed}/{total} | {safe_detail}\n")
+            except OSError:
+                pass
 
     def finish(self, *, success: bool) -> None:
-        self._stop_event.set()
-        if self._thread is not None:
-            self._thread.join(timeout=max(0.1, self.refresh_seconds * 2))
-        with self._lock:
-            already_complete = (
-                success
-                and self.state.total is not None
-                and self.state.total > 0
-                and self.state.completed >= self.state.total
-            )
-        if already_complete:
-            return
-        elapsed = time.perf_counter() - self.started_at
-        if success:
-            bar = "=" * BAR_WIDTH
-            status = "100%"
-        else:
-            bar = "!" * BAR_WIDTH
-            status = "FAILED"
-        self._write(
-            f"{self.state.label:<20} [{bar}] {status:>6} | elapsed {_format_elapsed(elapsed)}",
-            log_event=True,
-            final=True,
-        )
-
-    def _refresh_loop(self) -> None:
-        while not self._stop_event.wait(self.refresh_seconds):
-            self._pulse += 1
-            self._write(self._render(), log_event=False)
-
-    def _render(self) -> str:
-        with self._lock:
-            state = ProgressState(**vars(self.state))
-        elapsed = time.perf_counter() - self.started_at
-        if state.total is not None and state.total > 0:
-            ratio = min(1.0, state.completed / state.total)
-            filled = round(ratio * BAR_WIDTH)
-            bar = "=" * filled + " " * (BAR_WIDTH - filled)
-            percent = f"{ratio * 100:3.0f}%"
-            count = f" | {state.completed}/{state.total}"
-            if state.completed > 0 and ratio < 1.0:
-                eta_seconds = elapsed * (state.total - state.completed) / state.completed
-                eta = f" | ETA {_format_elapsed(eta_seconds)}"
+        if self.task_id is not None:
+            if success:
+                total = self.progress.tasks[self.task_id].total
+                if total:
+                    self.progress.update(self.task_id, completed=total, detail="[bold green]Completed")
             else:
-                eta = " | ETA 00:00:00"
-        else:
-            position = self._pulse % BAR_WIDTH
-            bar_chars = [" "] * BAR_WIDTH
-            bar_chars[position] = ">"
-            bar = "".join(bar_chars)
-            percent = "working"
-            count = ""
-            eta = " | ETA --"
-        
-        main_line = (
-            f"{state.label:<20} [{bar}] {percent:>7}"
-            f" | elapsed {_format_elapsed(elapsed)}{eta}{count}"
-        )
-
-        if state.verbose and state.detail:
-            # If verbose, we might want to split detail into multiple lines or show it prominently
-            # For now, let's keep it simple but ensure it's not truncated if we can help it.
-            return f"{main_line}\n  > {state.detail}"
-        
-        detail = f" | {state.detail}" if state.detail else ""
-        return f"{main_line}{detail}"
-
-    def _write(self, content: str, *, log_event: bool, final: bool = False) -> None:
-        lines = content.split("\n")
-        rendered_lines = [self._fit_terminal(f"[progress] {line}") for line in lines]
-        
-        # Move cursor up if we wrote multiple lines last time
-        if self._last_lines > 1:
-            self._live_stream.write(f"\x1b[{self._last_lines - 1}A")
-        
-        # Clear lines and write new content
-        for i, line in enumerate(rendered_lines):
-            self._live_stream.write("\r\x1b[K" + line)
-            if i < len(rendered_lines) - 1:
-                self._live_stream.write("\n")
-        
-        if final:
-            self._live_stream.write("\n")
-            self._last_lines = 0
-        else:
-            self._live_stream.write("\r")
-            self._last_lines = len(rendered_lines)
-            
-        self._live_stream.flush()
-        
-        if log_event and self._live_stream is not self.stream:
-            self._append_wrapper_log("\n".join(rendered_lines))
-
-    @staticmethod
-    def _fit_terminal(line: str) -> str:
-        width = shutil.get_terminal_size(fallback=(120, 24)).columns
-        usable_width = max(40, width - 1)
-        if len(line) <= usable_width:
-            return line
-        return line[: usable_width - 3] + "..."
-
-    @staticmethod
-    def _resolve_live_stream(stream: TextIO) -> TextIO:
-        if stream not in {sys.stdout, sys.stderr}:
-            return stream
-        if os.name != "nt" or stream.isatty():
-            return stream
-        try:
-            return open("CONOUT$", "w", encoding=getattr(stream, "encoding", None) or "utf-8")
-        except OSError:
-            return stream
-
-    @staticmethod
-    def _append_wrapper_log(line: str) -> None:
-        log_path = os.environ.get("POULTRY_PROGRESS_LOG")
-        if not log_path:
-            return
-        try:
-            with open(log_path, "a", encoding="utf-8") as handle:
-                handle.write(line + "\n")
-        except OSError:
-            return
+                self.progress.update(self.task_id, detail="[bold red]Failed")
+                
+        self.progress.stop()
 
 
 @contextmanager
@@ -201,7 +121,7 @@ def command_progress_context(
     argv: Sequence[str] | None,
     *,
     stream: TextIO | None = None,
-    refresh_seconds: float = DEFAULT_REFRESH_SECONDS,
+    refresh_seconds: float = 2.0,
 ) -> Iterator[CommandProgress | None]:
     args = list(argv or [])
     if "--no-progress" in args or any(token in {"-h", "--help", "-?"} for token in args):
@@ -210,8 +130,6 @@ def command_progress_context(
 
     progress = CommandProgress(
         _command_label(args),
-        stream=stream,
-        refresh_seconds=refresh_seconds,
         verbose="--verbose" in args,
     )
     progress.start()
@@ -225,7 +143,7 @@ def command_progress_context(
 
 
 def _command_label(args: Sequence[str]) -> str:
-    options_with_values = {"--log-file"}
+    options_with_values = {"--log-file", "--config"}
     skip_next = False
     for token in args:
         if skip_next:
@@ -238,10 +156,3 @@ def _command_label(args: Sequence[str]) -> str:
             continue
         return token
     return "poultry-geo"
-
-
-def _format_elapsed(elapsed_seconds: float) -> str:
-    total_seconds = max(0, round(elapsed_seconds))
-    hours, remainder = divmod(total_seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"

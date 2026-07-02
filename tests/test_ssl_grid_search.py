@@ -37,6 +37,7 @@ def test_load_ssl_grid_search_config(tmp_path: Path) -> None:
             "learning_rate": [0.0001],
             "weight_decay": [0.05],
             "warmup_epochs": [5],
+            "pretrained": [False]
         }
     }
     config_path = tmp_path / "ssl_config.yaml"
