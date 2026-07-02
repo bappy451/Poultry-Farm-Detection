@@ -50,3 +50,6 @@ shapefile_output/
 *.jpeg
 *.png
 *.csv
+
+temp/*
+!temp/data_catalog.csv

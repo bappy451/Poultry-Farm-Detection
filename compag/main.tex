@@ -1,0 +1,84 @@
+\documentclass[preprint,12pt,authoryear]{elsarticle}
+
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{graphicx}
+
+\journal{Computers and Electronics in Agriculture}
+
+\begin{document}
+
+\begin{frontmatter}
+
+\title{Self-Supervised Masked Image Modeling on High-Resolution Multispectral Aerial Imagery for Automated Poultry Farm Detection}
+
+\author[inst1]{First Author}
+\author[inst1]{Second Author}
+
+\affiliation[inst1]{organization={Department of Agricultural Engineering, University Name},
+            addressline={Address Line}, 
+            city={City},
+            postcode={00000}, 
+            state={State},
+            country={Country}}
+
+\begin{abstract}
+Abstract text to be written.
+\end{abstract}
+
+\begin{keyword}
+Poultry Farm Detection \sep Self-Supervised Learning \sep Masked Image Modeling \sep Remote Sensing \sep NAIP
+\end{keyword}
+
+\end{frontmatter}
+
+\section{Introduction}
+Introduction text to be written.
+
+\section{Materials and Methods}
+\label{sec:methods}
+
+\subsection{Study Area and Datasets}
+\label{subsec:datasets}
+
+\subsubsection{SSL Pretraining Dataset}
+To address the domain gap between natural imagery and agricultural remote sensing, we compiled a massive pretraining dataset comprising 9.87 million high-resolution tiles ($512 \times 512$ pixels) derived from the National Agriculture Imagery Program (NAIP) imagery. This dataset totals approximately 1.5 Terabytes and includes images sourced from the Satlas and SpaceNet collections. Unlike standard computer vision datasets, NAIP imagery inherently contains multispectral information. We utilized both True Color (TCI) RGB bands and the Near-Infrared (IR) band. The integration of the IR band is particularly crucial for agricultural applications, as it provides distinct spectral signatures that differentiate artificial structures, such as metallic and synthetic poultry house roofs, from surrounding vegetation.
+
+\subsubsection{Downstream Fine-Tuning Dataset}
+For the downstream object detection task, an annotated dataset of NAIP imagery specifically capturing poultry farming operations was utilized. The annotations were divided into two highly specialized classes: \textit{Broiler House} and \textit{Broiler Breeder}. Accurately distinguishing between these two classes requires the model to learn fine-grained spatial and structural features, making it an ideal testbed for evaluating the representational capacity of our self-supervised foundation model.
+
+\subsection{Proposed Pipeline Architecture}
+\label{subsec:architecture}
+
+\subsubsection{Masked Image Modeling (SparK)}
+We adopted the Spatial Masked Image Modeling (SparK) framework for our self-supervised pretraining phase. SparK adapts the principles of Masked Autoencoders (MAE) for convolutional architectures. During pretraining, a significant portion of the input imagery is masked. While standard natural image pretraining typically masks 75\% of the image, overhead agricultural imagery often exhibits high spatial redundancy (e.g., expansive fields and forests). Therefore, we evaluated mask ratios between 60\% and 75\% to force the model to reconstruct small, isolated structures. The model is tasked with reconstructing the masked patches from the visible context, thereby learning robust, domain-specific feature representations without relying on manual annotations.
+
+\subsubsection{Downstream Object Detection}
+Following the SSL pretraining, the learned convolutional backbone was integrated into a state-of-the-art YOLO (You Only Look Once) architecture, specifically YOLO11l and YOLOv26l variants. The pre-trained SparK backbone serves as the feature extractor, initializing the detection network with weights highly optimized for overhead agricultural imagery rather than standard ImageNet distributions.
+
+\subsection{Training Protocols and Grid Search}
+\label{subsec:training}
+To manage the computational complexity of the 1.5 TB dataset, hyperparameter optimization was conducted on a 10\% randomly sampled subset (~1 million images). We evaluated learning rates (e.g., 0.0004 vs. 0.0001) and weight decay parameters using the AdamW optimizer with mixed precision (fp16). Due to the high resolution of the tiles ($512 \times 512$) compared to standard ImageNet inputs ($224 \times 224$), GPU memory constraints dictated a reduced batch size of 32 for the pretraining phase to prevent out-of-memory (OOM) errors during the forward and backward passes.
+
+\subsection{Geospatial Inference and Post-Processing}
+\label{subsec:gis}
+Deploying deep learning models on large-scale GeoTIFF imagery requires specialized handling of geospatial coordinates and image boundaries. 
+\begin{itemize}
+    \item \textbf{Sliding-Window Inference:} Large geographical areas were processed using a sliding-window approach with a window size of $1024 \times 1024$ pixels and a 20\% overlap to ensure edge cases were captured.
+    \item \textbf{Cross-Tile Non-Maximum Suppression (NMS):} Because large poultry houses frequently span multiple tiles, cross-tile NMS was implemented to merge duplicate bounding boxes resulting from the overlapping inference windows.
+    \item \textbf{Automated Shapefile Generation:} Bounding box coordinates were dynamically projected from pixel space into the target Coordinate Reference System (CRS) of the source imagery (e.g., NAD83 Georgia East State Plane, EPSG:6444). The final detections were converted into polygon geometries and exported as ArcGIS-ready Shapefiles using the GeoPandas library, ensuring immediate utility for agricultural mapping workflows.
+\end{itemize}
+
+\section{Results}
+Results text to be written.
+
+\section{Discussion}
+Discussion text to be written.
+
+\section{Conclusion}
+Conclusion text to be written.
+
+\bibliographystyle{elsarticle-harv} 
+\bibliography{refs}
+
+\end{document}

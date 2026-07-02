@@ -1,0 +1,79 @@
+# NAIP Poultry Farm Detection Configuration
+# ==========================================
+# This config drives scripts/run_naip_detection.py
+# Detects poultry farms in NAIP GeoTIFF imagery using YOLO11l (COCO pretrained).
+# Output coordinates are projected to NAD83(2011) Georgia State Plane.
+
+# ------------------------------------------------------------------
+# Model settings
+# ------------------------------------------------------------------
+model:
+  # Path to YOLO weights. Use "yolo11l.pt" to auto-download COCO pretrained.
+  # Or point to a local fine-tuned model, e.g. runs/segment/.../weights/best.pt
+  weights: "C:/Users/mza0288/Documents/Poultry-Farm-Detection/runs/segment/runs/downstream/yolo11l_spark/weights/best.pt"
+  device: "cuda"            # "auto" | "cuda" | "cpu"
+  conf_threshold: 0.35      # Minimum detection confidence (0–1)
+  iou_threshold: 0.45       # NMS IoU threshold during inference
+  # Filter to specific COCO class IDs. null = all classes.
+  # COCO class 0 = person, so this should be tuned to your fine-tuned model classes.
+  # Set to null for COCO pretrained; set to [0] for a single-class fine-tuned model.
+  classes: null
+  imgsz: 1024               # Inference image size (tiles are resized to this for YOLO)
+  batch_size: 48             # Number of tiles per YOLO forward pass (lowered from 64 to prevent VRAM swapping)
+  verbose: false            # YOLO verbosity
+
+# ------------------------------------------------------------------
+# Input settings
+# ------------------------------------------------------------------
+input:
+  image_dir: "E:/All_Data/GA"           # Directory containing GeoTIFF files
+  extensions:                    # Supported file extensions
+    - ".tif"
+    - ".tiff"
+  recursive: true                # Search subdirectories
+
+# ------------------------------------------------------------------
+# Sliding-window tiling
+# ------------------------------------------------------------------
+tiling:
+  window_size: 1024   # Side length (pixels) of each tile
+  overlap: 0.2       # Fractional overlap between adjacent tiles (0.0 – 0.5)
+  # If true, pad border tiles with zeros so the full image is covered
+  pad_border: true
+
+# ------------------------------------------------------------------
+# Cross-tile NMS (deduplication)
+# ------------------------------------------------------------------
+nms:
+  enabled: true
+  iou_threshold: 0.40   # IoU above which overlapping cross-tile detections are merged
+
+# ------------------------------------------------------------------
+# Output settings
+# ------------------------------------------------------------------
+output:
+  # Path for the output CSV. Directories are created automatically.
+  csv_path: "outputs/naip_detections_ga.csv"
+
+  # Primary coordinate output CRS
+  # NAD83(2011) / Georgia East  (feet) – EPSG:6444
+  # NAD83(2011) / Georgia West  (feet) – EPSG:6445
+  # NAD83       / Georgia East  (feet) – EPSG:2239  (older datum)
+  # Use the one that matches your target GIS workflow.
+  target_crs: "EPSG:6444"   # NAD83(2011) / Georgia East
+
+  # Also write WGS-84 lat/lon columns (always useful)
+  include_wgs84: true
+
+  # Also write coordinates in the native CRS of the source GeoTIFF
+  include_source_crs: true
+
+  # Human-readable name embedded in the CSV header comment
+  target_crs_label: "NAD83(2011) Georgia East State Plane (ft)"
+
+# ------------------------------------------------------------------
+# Logging
+# ------------------------------------------------------------------
+logging:
+  level: "INFO"             # DEBUG | INFO | WARNING | ERROR
+  log_file: "outputs/detection_run.log"  # null to disable file logging
