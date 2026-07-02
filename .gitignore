@@ -71,3 +71,6 @@ shapefile_output/
 
 temp/*
 !temp/data_catalog.csv
+
+*.pt
+*.pth
