@@ -16,20 +16,33 @@ dist/
 .DS_Store
 
 # Runtime logs and scratch space
+#
+# Keep all generated command logs and temporary working directories out of Git.
+# This intentionally does not ignore source files such as command_logging.py or
+# run_logged.sh.
 /command.log
+command.log
+**/command.log
 *.log
 *.log.*
+*.out
+*.err
+*.trace
+*.pid
 *.tmp
-/log/
-/logs/
-/**/log/
-/**/logs/
-/tmp/
-/temp/
-/**/tmp/
-/**/temp/
+*.temp
+log/
+logs/
+**/log/
+**/logs/
+tmp/
+temp/
 tmp*/
-**/tmp*/
+temp*/
+**/tmp/
+**/tmp/**
+**/temp/
+**/temp/**
 **/Data/
 
 runs/

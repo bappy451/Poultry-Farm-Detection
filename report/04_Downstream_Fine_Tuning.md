@@ -6,12 +6,34 @@ Following Self-Supervised Learning (SSL), the foundation models must be fine-tun
 The downstream fine-tuning phase is strictly orchestrated using the `configs/downstream_finetune.yaml` configuration file and executed via the `scripts/train_segmentation.sh` wrapper script. This ensures reproducible and standardized experiments.
 
 ### Baseline Hyperparameters
-- **Dataset:** Configured via `Data/downstream_data.yaml` (utilizing a split of human-annotated NAIP imagery).
+- **Dataset:** Configured via `../Data/poultry_houses_Training/data.yaml`, which now points to the actual local training/validation/test image directories under `/Users/abedinm/Desktop/01_MS_Code/Data`.
 - **Epochs:** 50
 - **Batch Size:** 8
 - **Image Size (imgsz):** 640x640 pixels
 - **Workers:** 4
 - **Output Directory:** `trained_models/finetune_results/`
+
+Verified current dataset counts:
+
+```text
+train images: 4342
+val images:   482
+test images:  702
+classes:      poultry_house, broiler breeder, broiler house
+```
+
+Minimal supervised smoke command:
+
+```bash
+poultry-geo train-yolo \
+  ../Data/poultry_houses_Training/data.yaml \
+  ./trained_models/yolo_smoke \
+  --models yolo11s-seg.pt \
+  --epochs 1 \
+  --batch-size 2 \
+  --image-size 640 \
+  --device cpu
+```
 
 ## 2. Model Variants Evaluated
 To quantify the tangible benefits of the project's custom SparK Self-Supervised pretraining, four distinct YOLO variants were trained in parallel. The goal was to compare the architectural efficacy of YOLO11 vs. YOLO26, and to measure the performance delta between standard pretrained weights and custom SSL weights.
@@ -57,3 +79,23 @@ Loss curve analysis revealed that **50 epochs is the optimal limit** for this da
 
 ## 5. Deployment Strategy
 Based on these findings, the `yolo11l_spark` model checkpoint (`best.pt`) is designated for the inference phase. For large-scale county-wide deployment, this PyTorch checkpoint can be subsequently exported to ONNX or TensorRT via the `export-model` CLI command to maximize hardware throughput.
+
+## 6. ResNet50 Fine-Tuning Notes
+
+The ResNet50 helper in `src/downstream_finetune/finetune_resnet50.py` was hardened for offline and CPU smoke tests:
+
+- `pretrained=False` now disables both segmentation weights and torchvision backbone weights, so it does not attempt to download ResNet50 checkpoints.
+- `num_workers` is configurable. CPU runs default to `0` workers to avoid shared-memory failures on restricted machines; CUDA runs can use multiple workers.
+- `best.pt` is saved from the first epoch even when the smoke dataset produces an F1 score of exactly `0.0`.
+
+CPU-safe smoke command:
+
+```bash
+python src/downstream_finetune/finetune_resnet50.py \
+  --data ../Data/poultry_houses_Training/data.yaml \
+  --project ./runs/segment/resnet50_smoke \
+  --epochs 1 \
+  --batch 1 \
+  --imgsz 64 \
+  --num-workers 0
+```

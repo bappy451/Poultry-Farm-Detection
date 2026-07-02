@@ -42,6 +42,7 @@ sys.modules["spconv"] = mock_spconv
 sys.modules["spconv.pytorch"] = MockPytorch
 import spconv.pytorch as spconv
 
+import poultry_geo.spark_models as spark_models
 from poultry_geo.spark_models import SparKNetwork
 from poultry_geo.spark import SparseTransformer
 from poultry_geo.models import BandAdapter
@@ -101,8 +102,9 @@ def test_spark_network_forward_pass():
     # Verify output resolution: (B, 3, H, W)
     assert reconstructed.shape == (B, 3, H, W)
 
-def test_sparse_layer_replacement():
+def test_sparse_layer_replacement(monkeypatch):
     """Ensure that the encoder uses sparse convolution layers instead of dense ones."""
+    monkeypatch.setattr(spark_models, "spconv", MockPytorch)
     model = SparKNetwork(backbone_type="resnet50", in_channels=3)
     
     # Check if some layers in the encoder are spconv types

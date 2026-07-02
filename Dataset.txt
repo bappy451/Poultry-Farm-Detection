@@ -1,0 +1,23 @@
+1. SatlasPretrain: Understanding the World Through Satellite Imagery: https://satlas-pretrain.allen.ai/
+2. 	RoofNet: https://www.kaggle.com/datasets/doubleblindreview/xbd-roof-images
+3. 	SpaceNet 7 STAC: https://www.planet.com/data/stac/browser/spacenet7/catalog.json?.language=en
+4. 	Fields of The World (FTW) - Baselines Codebase: https://github.com/fieldsoftheworld/ftw-baselines
+5. 	Poultry barn mapping: https://github.com/microsoft/poultry-cafos/#dataset-and-pretrained-models
+6. 	FAIR1M: https://huggingface.co/datasets/blanchon/FAIR1M
+7. 	DOTA: Resized and Hugging Face-Ready Vision Dataset: https://huggingface.co/datasets/HichTala/dota
+8. 	Inria Aerial Image Labeling Dataset: https://project.inria.fr/aerialimagelabeling/files/
+9. 	Functional Map of the World (fMoW) Dataset: https://github.com/fMoW/dataset#aws
+10. 	AgricultureVision: https://registry.opendata.aws/intelinair_agriculture_vision/ or https://huggingface.co/datasets/shi-labs/Agriculture-Vision
+11. 	SyntheWorld: A Large-Scale Synthetic Dataset for Land Cover Mapping and Building Change Detection: https://zenodo.org/records/8349019
+12. 	LoveDa Dataset: https://www.kaggle.com/datasets/mohammedjaveed/loveda-dataset 
+13. 	Global Land Cover Mapping - OpenEarthMap: https://www.kaggle.com/datasets/aletbm/global-land-cover-mapping-openearthmap
+14. 	GTPBD-MM: Multi-Modality Extension: https://huggingface.co/datasets/wxqzzw/GTD
+15. SpaceNet: https://registry.opendata.aws/spacenet/ 
+16. 	Svamitva Drone Aerial Images : https://www.kaggle.com/datasets/utkarshsaxenadn/svamitva-drone-aerial-images
+17. 	Satellite Images Semantic Segmentation of Mumbai : https://www.kaggle.com/datasets/alienxc137/satellite-images-semantic-segmentation-of-mumbai
+18. 	OpenEarthMap-SAR: A Benchmark Synthetic Aperture Radar Dataset for Global High-Resolution Land Cover Mapping : https://zenodo.org/records/14622048
+19 	Spacenet 7 Multi-Temporal Urban Development : https://www.kaggle.com/datasets/amerii/spacenet-7-multitemporal-urban-development
+20. 	SpaceNet 6 Multi-Sensor All-Weather Mapping: https://www.kaggle.com/datasets/sandhiwangiyana/spacenet-6-multisensor-allweather-mapping
+
+Benchmark Datasets (torchgeo): https://docs.torchgeo.org/en/latest/api/datasets.html 
+

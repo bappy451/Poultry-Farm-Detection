@@ -4,6 +4,12 @@ Welcome to the comprehensive technical documentation for the Poultry Farm Geospa
 
 This directory contains an extensive set of reports covering every aspect of the project, from high-level architecture to the deep mathematical reasoning behind our machine learning choices.
 
+Latest local verification for this codebase audit:
+
+```text
+177 passed, 11 skipped, 8 warnings
+```
+
 ## Document Manifest
 
 1. **[01 - Executive Summary and Project Overview](./01_Executive_Summary_and_Overview.md)**
@@ -40,3 +46,8 @@ This directory contains an extensive set of reports covering every aspect of the
    - Creation and processing of NAIP imagery for Self-Supervised Learning.
    - Automated COCO to YOLO conversion for downstream segmentation datasets.
    - Core data structures, augmentations, and PyTorch `DataLoader` mechanics.
+
+8. **[08 - Codebase Runbook: How to Run, Test, and Review Outputs](./08_Codebase_Runbook.md)**
+   - Step-by-step setup for macOS, Linux, and Windows.
+   - Concrete commands for slicing, conversion, YOLO/RT-DETR training, SSL, MississippiFM, inference, post-processing, GIS export, and plotting.
+   - Expected outputs, logging behavior, troubleshooting, and current test evidence.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import math
 import re
+import warnings
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Iterator
@@ -188,46 +189,13 @@ def slice_geotiff_to_files(
     output_dir.mkdir(parents=True, exist_ok=True)
     resolved_output_format = _resolve_output_format(output_format, to_jpeg)
 
-    # If workers > 1, we use multiprocessing to slice tiles in parallel.
-    # We do not use this if we're already inside a worker process (handled by callers).
-    num_tiles = 0
-    with rasterio.open(geotiff_path) as src:
-        num_tiles = sum(1 for _ in iter_tile_windows(src.width, src.height, tile_size, stride))
-
-    resolved_workers = _resolve_worker_count(workers, num_tiles)
-
-    if resolved_workers <= 1:
-        written_paths: list[Path] = []
-        for tile in iter_slice_geotiff(geotiff_path, tile_size=tile_size, stride=stride):
-            written_paths.append(_write_single_tile(tile, output_dir, resolved_output_format, jpeg_quality))
-        return written_paths
-
-    # Parallel slicing
-    jobs = []
-    stride_val = _resolve_stride(tile_size, stride)
-    with rasterio.open(geotiff_path) as src:
-        width, height = src.width, src.height
-        for row_index, col_index, x_start, y_start, x_end, y_end in iter_tile_windows(
-            width, height, tile_size, stride_val
-        ):
-            jobs.append(
-                (
-                    str(geotiff_path),
-                    str(output_dir),
-                    row_index,
-                    col_index,
-                    x_start,
-                    y_start,
-                    x_end,
-                    y_end,
-                    resolved_output_format,
-                    jpeg_quality,
-                )
-            )
-
-    with ProcessPoolExecutor(max_workers=resolved_workers) as executor:
-        results = list(executor.map(_write_tile_job, jobs))
-    return [Path(r) for r in results]
+    # File-level multiprocessing is orchestrated by slice_geotiff_collection_to_files.
+    # A single GeoTIFF is always processed inline so one worker owns the full file
+    # from open through final tile writes.
+    written_paths: list[Path] = []
+    for tile in iter_slice_geotiff(geotiff_path, tile_size=tile_size, stride=stride):
+        written_paths.append(_write_single_tile(tile, output_dir, resolved_output_format, jpeg_quality))
+    return written_paths
 
 
 def _write_single_tile(
@@ -309,6 +277,19 @@ def _write_tile_job(job: tuple) -> str:
         return str(output_path)
 
 
+def _run_slice_jobs_serial(
+    jobs: list[tuple[str, str, int, int | None, str | None, int]],
+    *,
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> list[Path]:
+    written: list[Path] = []
+    for index, job in enumerate(jobs, start=1):
+        written.extend(Path(path) for path in _slice_single_geotiff_job(job))
+        if progress_callback is not None:
+            progress_callback(index, len(jobs), Path(job[0]).name)
+    return written
+
+
 def slice_geotiff_collection_to_files(
     input_path: str | Path,
     output_dir: str | Path,
@@ -356,15 +337,22 @@ def slice_geotiff_collection_to_files(
     ]
 
     if resolved_workers == 1:
-        written: list[Path] = []
-        for index, job in enumerate(jobs, start=1):
-            written.extend(Path(path) for path in _slice_single_geotiff_job(job))
-            if progress_callback is not None:
-                progress_callback(index, len(jobs), Path(job[0]).name)
-        return written
+        return _run_slice_jobs_serial(jobs, progress_callback=progress_callback)
 
     written: list[Path] = []
-    with ProcessPoolExecutor(max_workers=resolved_workers) as executor:
+    try:
+        executor = ProcessPoolExecutor(max_workers=resolved_workers)
+    except (OSError, PermissionError) as exc:
+        warnings.warn(
+            "ProcessPoolExecutor is unavailable in this environment; "
+            "falling back to serial file-level slicing. "
+            f"Original error: {exc}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return _run_slice_jobs_serial(jobs, progress_callback=progress_callback)
+
+    with executor:
         # Each job is a full GeoTIFF from open to final write. We do not split a single
         # GeoTIFF across processes because the user wants one worker to own the entire file.
         for index, result_paths in enumerate(executor.map(_slice_single_geotiff_job, jobs), start=1):

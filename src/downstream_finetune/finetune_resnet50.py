@@ -87,7 +87,10 @@ def build_resnet50_segmentation_model(num_classes, pretrained=False):
     if pretrained:
         model = fcn_resnet50(weights=FCN_ResNet50_Weights.DEFAULT)
     else:
-        model = fcn_resnet50(weights=None)
+        # torchvision defaults weights_backbone to ImageNet weights even when
+        # segmentation weights are None. Explicitly disable it so offline and
+        # sandboxed test runs do not try to download ResNet50 checkpoints.
+        model = fcn_resnet50(weights=None, weights_backbone=None)
         
     # Replace the classifier head for the specific number of classes
     # FCN head uses 512 channels from layer4.
@@ -112,8 +115,20 @@ def compute_confusion_matrix(preds, targets, num_classes):
     ).reshape(num_classes, num_classes)
     return hist
 
-def train_resnet50_segmentation(data_yaml, model_weights, output_dir, epochs=50, batch_size=16, imgsz=640, device="cuda", pretrained=False):
+def train_resnet50_segmentation(
+    data_yaml,
+    model_weights,
+    output_dir,
+    epochs=50,
+    batch_size=16,
+    imgsz=640,
+    device="cuda",
+    pretrained=False,
+    num_workers=None,
+):
     device = torch.device(device if torch.cuda.is_available() else "cpu")
+    if num_workers is None:
+        num_workers = min(4, os.cpu_count() or 1) if device.type == "cuda" else 0
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     weights_dir = out_dir / "weights"
@@ -121,13 +136,24 @@ def train_resnet50_segmentation(data_yaml, model_weights, output_dir, epochs=50,
     
     # Save args
     with open(out_dir / "args.yaml", "w") as f:
-        yaml.dump({"data": data_yaml, "model_weights": model_weights, "epochs": epochs, "batch_size": batch_size, "imgsz": imgsz, "pretrained": pretrained}, f)
+        yaml.dump(
+            {
+                "data": data_yaml,
+                "model_weights": model_weights,
+                "epochs": epochs,
+                "batch_size": batch_size,
+                "imgsz": imgsz,
+                "pretrained": pretrained,
+                "num_workers": num_workers,
+            },
+            f,
+        )
         
     # Dataset
     train_ds = YoloFormatSegmentationDataset(data_yaml, split="train", imgsz=imgsz)
     val_ds = YoloFormatSegmentationDataset(data_yaml, split="val", imgsz=imgsz)
-    train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=4, drop_last=True)
-    val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=4)
+    train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=True)
+    val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     
     num_classes = train_ds.nc + 1 # +1 for background
     
@@ -156,7 +182,7 @@ def train_resnet50_segmentation(data_yaml, model_weights, output_dir, epochs=50,
     accumulation_steps = max(1, 8 // batch_size) # Aim for effective batch size of 8
     
     results = []
-    best_f1 = 0.0
+    best_f1 = -float("inf")
     
     for epoch in range(epochs):
         model.train()
@@ -267,6 +293,12 @@ if __name__ == "__main__":
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--pretrained", action="store_true", help="Use torchvision ImageNet pretrained weights")
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=None,
+        help="DataLoader workers. Defaults to 0 on CPU and up to 4 on CUDA.",
+    )
     args = parser.parse_args()
     
     train_resnet50_segmentation(
@@ -276,5 +308,6 @@ if __name__ == "__main__":
         epochs=args.epochs,
         batch_size=args.batch,
         imgsz=args.imgsz,
-        pretrained=args.pretrained
+        pretrained=args.pretrained,
+        num_workers=args.num_workers,
     )

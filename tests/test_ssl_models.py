@@ -14,7 +14,10 @@ from poultry_geo.ssl_models import BandAdapter, RemoteSensingViT
 
 def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
+        try:
+            sock.bind(("127.0.0.1", 0))
+        except OSError as exc:
+            pytest.skip(f"Local TCP sockets are unavailable for DDP smoke test: {exc}")
         return int(sock.getsockname()[1])
 
 
