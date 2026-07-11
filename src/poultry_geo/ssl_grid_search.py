@@ -127,6 +127,16 @@ import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import threading
 
+def _infinite_loader(loader):
+    epoch = 0
+    while True:
+        sampler = getattr(loader, "sampler", None)
+        if sampler is not None and hasattr(sampler, "set_epoch"):
+            sampler.set_epoch(epoch)
+        for batch in loader:
+            yield batch
+        epoch += 1
+
 def _run_single_experiment(
     experiment: dict[str, Any],
     normalized_training_name: str,
@@ -237,11 +247,13 @@ def _run_single_experiment(
             catalog_path=catalog_path_str,
         )
 
+        infinite_stream = _infinite_loader(train_loader)
+
         for epoch_index in range(run_state.start_epoch, total_epochs):
             start_time = time.time()
             loss = _train_one_epoch(
                 model,
-                train_loader,
+                infinite_stream,
                 optimizer,
                 model_name=model_name,
                 device=resolved_device,
@@ -357,7 +369,7 @@ def run_stateful_ssl_grid_search(
 
 def _train_one_epoch(
     model: RemoteSensingMIMModel,
-    loader,
+    infinite_stream,
     optimizer,
     *,
     model_name: str = "unknown",
@@ -370,14 +382,10 @@ def _train_one_epoch(
     total_experiments: int = 1,
     total_epochs: int = 1,
 ) -> float:
-    sampler = getattr(loader, "sampler", None)
-    if sampler is not None and hasattr(sampler, "set_epoch"):
-        sampler.set_epoch(epoch_index)
-
     model.train()
     total_loss = 0.0
     total_batches = 0
-    num_batches = len(loader)
+    num_batches = 4000
     last_loss = 0.0
 
     if precision == "fp16":
@@ -387,7 +395,9 @@ def _train_one_epoch(
     else:
         ctx = nullcontext()
 
-    for batch_index, batch in enumerate(loader, start=1):
+    for batch_index in range(1, num_batches + 1):
+        batch = next(infinite_stream)
+
         if progress_callback is not None:
             # overall progress calculation
             # experiments -> epochs -> batches

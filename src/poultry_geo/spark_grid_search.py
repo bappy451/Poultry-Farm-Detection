@@ -28,6 +28,16 @@ from poultry_geo.ssl_grid_search import (
 )
 
 
+def _infinite_loader(loader):
+    epoch = 0
+    while True:
+        sampler = getattr(loader, "sampler", None)
+        if sampler is not None and hasattr(sampler, "set_epoch"):
+            sampler.set_epoch(epoch)
+        for batch in loader:
+            yield batch
+        epoch += 1
+
 def _run_single_experiment(
     experiment: dict[str, Any],
     normalized_training_name: str,
@@ -138,12 +148,14 @@ def _run_single_experiment(
             catalog_path=catalog_path_str,
         )
 
+        infinite_stream = _infinite_loader(train_loader)
+
         for epoch_index in range(run_state.start_epoch, total_epochs):
             start_time = time.time()
             
             avg_loss = _train_one_epoch(
                 model,
-                train_loader,
+                infinite_stream,
                 optimizer,
                 transformer,
                 spark_config,
@@ -239,7 +251,7 @@ def run_stateful_spark_grid_search(
 
 def _train_one_epoch(
     model: torch.nn.Module,
-    loader,
+    infinite_stream,
     optimizer,
     transformer: torch.nn.Module,
     spark_config: Any,
@@ -254,17 +266,15 @@ def _train_one_epoch(
     total_experiments: int = 1,
     total_epochs: int = 1,
 ) -> float:
-    sampler = getattr(loader, "sampler", None)
-    if sampler is not None and hasattr(sampler, "set_epoch"):
-        sampler.set_epoch(epoch_index)
-
     model.train()
     epoch_loss = 0.0
     total_batches = 0
-    num_batches = len(loader)
+    num_batches = 4000
     last_loss = 0.0
 
-    for batch_index, batch in enumerate(loader, start=1):
+    for batch_index in range(1, num_batches + 1):
+        batch = next(infinite_stream)
+
         if progress_callback is not None:
             num_batches_safe = max(num_batches, 1)
             total_work = total_experiments * total_epochs * num_batches_safe
