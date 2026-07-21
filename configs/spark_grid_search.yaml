@@ -10,7 +10,7 @@ runtime:
   device: "auto"
   seed: 27
   output_dir: "./runs/spark-grid-search_new"
-  epochs: 1
+  epochs: 300
 
 grid_search:
   model_name: ["yolo11l"]
@@ -19,7 +19,7 @@ grid_search:
   precision: ["fp16"]
   optimizer: ["adamw"]
   weight_decay: [0.05]
-  warmup_epochs: [1]
+  warmup_epochs: [5]
   drop_path_rate: [0.0]
   freeze_backbone: [false]
   use_lora: [false]

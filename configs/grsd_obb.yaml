@@ -1,0 +1,8 @@
+path: C:\Users\mza0288\Documents\Poultry-Farm-Detection\datasets\GRSD_YOLO
+train: images/train
+val: images/val
+test: images/val
+
+# Classes
+names:
+  0: plastic greenhouse

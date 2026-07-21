@@ -1,0 +1,15 @@
+# Downstream Comparison: Official ImageNet YOLO11l vs SparK-Pretrained YOLO11l
+# Task: Oriented Bounding Box (OBB) detection of poultry houses
+# Classes: 0=broiler breeder, 1=broiler house
+# Training split: 4,824 images | Val/Test split: 702 images
+
+path: C:\Users\mza0288\Documents\Poultry-Farm-Detection\temp\poultry_houses_train
+
+train: train/images
+val: ..\poultry_houses_test\test\images
+test: ..\poultry_houses_test\test\images
+
+nc: 2
+names:
+  0: broiler breeder
+  1: broiler house

@@ -1,0 +1,56 @@
+# SparK pretraining from RANDOM INITIALIZATION (no ImageNet weights)
+# Purpose: Ablation study to prove NAIP-domain SSL pretraining alone
+#          can match or beat ImageNet-pretrained weights for downstream
+#          poultry farm detection.
+#
+# Key differences vs spark_grid_search.yaml (ImageNet-init):
+#   pretrained: false       -- random weight init, no ImageNet
+#   learning_rate: 0.0008   -- higher peak LR (random init needs more aggressive early learning)
+#   warmup_epochs: 10       -- longer warmup (random init is much more unstable early)
+#   epochs: 300             -- same budget for fair comparison
+#
+# Reference: SparK paper (Tian et al., 2023) uses 800 epochs from scratch
+# on ImageNet. We match their 300-epoch NAIP equivalent that proved competitive.
+#
+# Output weights will be saved to:
+#   trained_models/spark-scratch/
+#
+# Usage:
+#   .\scripts\spark_grid_train.cmd --training-name "spark-scratch" --config configs\spark_scratch.yaml --verbose
+
+data:
+  image_dir: E:\NAIP_Dataset_PH
+  catalog_path: C:\Users\mza0288\Documents\Poultry-Farm-Detection\trained_models\data_catalog.csv
+  image_size: 512
+  n_channels: 3
+  batch_size: 32   # Same as ImageNet run for fair GPU-compute comparison
+  num_workers: 12
+
+runtime:
+  device: "auto"
+  seed: 42          # Different seed from ImageNet run (seed=27) to ensure independent init
+  output_dir: "./runs/spark-scratch"
+  epochs: 300
+
+grid_search:
+  model_name: ["yolo11l"]
+
+  # === Core change: random init ===
+  pretrained: [false]
+
+  # Higher LR: from-scratch training needs a stronger initial signal.
+  # ImageNet init used 0.0004; scratch needs ~2x to overcome random init noise.
+  learning_rate: [0.0008]
+
+  mask_ratio: [0.7]        # Same as ImageNet run for fair comparison
+  precision: ["fp16"]
+  optimizer: ["adamw"]
+  weight_decay: [0.05]
+
+  # 2x longer warmup: random init weights are highly unstable.
+  # Short warmup would cause gradient explosion in early epochs.
+  warmup_epochs: [10]
+
+  drop_path_rate: [0.0]
+  freeze_backbone: [false]
+  use_lora: [false]
