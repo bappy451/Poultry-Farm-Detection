@@ -74,13 +74,20 @@ def compute_cosine_similarity_maps(
     backbone.eval()
 
     img = image_tensor.to(device)
+    if img.dim() == 3:
+        img = img.unsqueeze(0)
     _, _, h, w = img.shape
     grid_h, grid_w = h // patch_size, w // patch_size
 
     with torch.no_grad():
         # Forward features returns patch token embeddings [B, N_patches, D]
         # or tuple depending on backbone output
-        features = backbone.forward_features(img)
+        if hasattr(backbone, "forward_features"):
+            features = backbone.forward_features(img)
+        elif hasattr(backbone, "backbone") and hasattr(backbone.backbone, "forward_features"):
+            features = backbone.backbone.forward_features(img)
+        else:
+            features = backbone(img)
         if isinstance(features, tuple):
             features = features[0]
         if features.dim() == 4:

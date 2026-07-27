@@ -84,6 +84,13 @@ class AdaptedBackbone(nn.Module):
         self.adapter = adapter
         self.backbone = backbone
 
+    def forward_features(self, x: torch.Tensor) -> torch.Tensor:
+        if self.adapter is not None:
+            x = self.adapter(x)
+        if hasattr(self.backbone, "forward_features"):
+            return self.backbone.forward_features(x)
+        return self.backbone(x)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.adapter is not None:
             x = self.adapter(x)

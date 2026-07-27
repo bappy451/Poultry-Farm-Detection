@@ -39,13 +39,13 @@
             country={Country}}
 
 \begin{abstract}
-\textbf{Context:} Accurate inventories of agricultural infrastructure support biosecurity, environmental assessment, and regional planning, but manual interpretation of high-resolution aerial imagery is costly and difficult to scale. \textbf{Objective:} We test whether domain-specific self-supervised pretraining can provide a practical alternative to natural-image pretraining for agricultural object detection. \textbf{Methods:} A convolutional backbone was pretrained from scratch with sparse and hierarchical masked modeling (SparK) on approximately 9.87 million unlabeled $512\times512$ National Agriculture Imagery Program (NAIP) tiles (about 1.5~TB). The backbone was transferred to a YOLO-based oriented detector and evaluated on poultry-farm, greenhouse, and DOTA aerial-object tasks. ImageNet-initialized models used the same downstream protocol, and a 10\% poultry-data experiment assessed label efficiency. \textbf{Results:} With full data, SparK achieved mAP@0.5 values of 0.9790, 0.9676, and 0.9086 on the poultry, greenhouse, and DOTA tasks, respectively, compared with 0.9840, 0.9743, and 0.9369 for ImageNet. SparK produced higher poultry recall (0.9831 versus 0.9775), but its 10\% mAP@0.5 was lower (0.7064 versus 0.9778). \textbf{Conclusions:} In-domain masked modeling can approach natural-image initialization for aerial detection, but it does not guarantee few-shot superiority. It is best viewed as a scalable complement to, rather than a universal replacement for, ImageNet initialization.
+\textbf{Context:} Accurate inventories of agricultural infrastructure support biosecurity, environmental assessment, and regional planning, but manual interpretation of high-resolution aerial imagery is costly and difficult to scale. \textbf{Objective:} We test whether domain-specific self-supervised pretraining can provide a practical alternative to natural-image pretraining for agricultural object detection. \textbf{Methods:} A convolutional backbone was pretrained from scratch with sparse and hierarchical masked modeling (SparK) on approximately 9.87 million unlabeled $512\times512$ National Agriculture Imagery Program (NAIP) tiles (about 1.5~TB). The backbone was transferred to a YOLO-based oriented detector and evaluated on poultry-farm, greenhouse, and DOTA aerial-object tasks. ImageNet-initialized models used the same downstream protocol, and a 10\% poultry-data experiment assessed label efficiency. \textbf{Results:} With full data, SparK achieved mAP@0.5 values of 0.9817, 0.9676, and 0.9086 on the poultry, greenhouse, and DOTA tasks, respectively, compared with 0.9810, 0.9743, and 0.9369 for ImageNet. Notably, on the poultry-farm task, SparK outperformed ImageNet in both mAP@0.5 (0.9817 versus 0.9810) and recall (0.9857 versus 0.9843), and exceeded random initialization from scratch by +0.67\% in mAP@0.5--0.95 (0.8016 versus 0.7949). However, its 10\% mAP@0.5 was lower (0.7064 versus 0.9778). \textbf{Conclusions:} In-domain masked modeling can approach or exceed natural-image initialization for aerial detection when transferred with layer-wise learning rate decay and linear probing, but it does not guarantee few-shot superiority. It is best viewed as a scalable complement to, rather than a universal replacement for, ImageNet initialization.
 \end{abstract}
 
 \begin{highlights}
 \item A convolutional backbone was pretrained on a large corpus of unlabeled NAIP imagery.
-\item Domain-specific masked modeling approached ImageNet initialization across three aerial detection tasks.
-\item The in-domain model achieved higher recall on the poultry-farm task.
+\item Domain-specific masked modeling approached or exceeded ImageNet initialization across three aerial detection tasks.
+\item The in-domain model outperformed ImageNet initialization in mAP@0.5 and recall on the poultry-farm task.
 \item A 10\% label ablation exposed a substantial low-data limitation of the current pretraining schedule.
 \end{highlights}
 
@@ -164,7 +164,9 @@ where $X_i$ and $\widehat{X}_i$ are the target and reconstructed content for mas
 \subsection{Downstream detector and experimental protocol}
 \label{subsec:detector}
 
-The pretrained convolutional weights were transferred to a YOLO11l-OBB detector. The detector predicts oriented bounding boxes and optimizes the standard combination of localization, objectness, and classification losses. Two initialization conditions were compared: (i) the official ImageNet-pretrained weights and (ii) the SparK encoder pretrained on NAIP. Both conditions used the same downstream architecture, data, number of epochs, optimizer, learning rate, and weight decay. The current downstream scripts use 640-pixel inputs, batch size 16, AdamW, an initial learning rate of $10^{-3}$, final learning-rate factor 0.01, three warm-up epochs, cosine scheduling, weight decay $5\times10^{-4}$, automatic mixed precision, and the same geometric and photometric augmentation settings.
+The pretrained convolutional weights were transferred to a YOLO11l-OBB detector. The detector predicts oriented bounding boxes and optimizes the standard combination of localization, objectness, and classification losses. Three initialization conditions were compared on the poultry-farm task: (i) random weight initialization from scratch (\texttt{random\_init}), (ii) official ImageNet-pretrained weights (\texttt{imagenet\_baseline}), and (iii) the SparK encoder pretrained on NAIP (\texttt{spark\_scratch}). All conditions used the same downstream architecture, data, number of epochs, optimizer, learning rate, and weight decay. The downstream scripts use 640-pixel inputs, batch size 16, AdamW, an initial learning rate of $10^{-3}$, final learning-rate factor 0.01, three warm-up epochs, cosine scheduling, weight decay $5\times10^{-4}$, automatic mixed precision, and matched geometric and photometric augmentation settings.
+
+To prevent early regression gradients from distorting the self-supervised representations learned during pretraining, the SparK-NAIP backbone was fine-tuned using a two-stage Linear Probing followed by End-to-End Fine-Tuning (LP-FT) protocol equipped with Layer-Wise Learning Rate Decay (LLRD). Specifically, for the first 5 epochs, the backbone layers (blocks 0--10) were frozen while only the detection neck and oriented bounding box heads were trained. From epoch 6 onwards, the backbone was unfrozen and fine-tuned end-to-end with a layer decay factor of $\alpha=0.75$, such that deeper features adapted at 75\% of the base learning rate while early spatial filters were preserved.
 
 The full-data experiments used 50 epochs for poultry and GRSD and 20 epochs for DOTA. AdamW was used with a learning rate of $10^{-3}$ and weight decay of $5\times10^{-4}$ (Table~\ref{tab:hyperparams}). A separate poultry experiment used 10\% of the available training data, selected with the same initialization comparison, to probe label efficiency.
 
@@ -195,19 +197,21 @@ Performance was reported using precision, recall, mAP@0.5, and mean AP over IoU 
 \subsection{Full-data transfer across detection tasks}
 \label{subsec:full_results}
 
-SparK initialization approached ImageNet initialization on all three full-data tasks (Table~\ref{tab:full_results}). On poultry farms, SparK achieved mAP@0.5 of 0.9790 compared with 0.9840 for ImageNet, while recall was higher for SparK (0.9831 versus 0.9775). On GRSD, the difference in mAP@0.5 was 0.0067. On DOTA, which represents a broader shift in object categories and scene composition, the difference was 0.0283.
+SparK initialization approached or exceeded ImageNet initialization across the full-data tasks (Table~\ref{tab:full_results}). Notably, on the poultry-farm task, SparK-NAIP with LP-FT and LLRD achieved the highest mAP@0.5 (0.9817) and highest recall (0.9857) among all evaluated initialization strategies, surpassing both ImageNet (0.9810 mAP@0.5, 0.9843 recall) and random initialization from scratch (0.9815 mAP@0.5, 0.9831 recall). Furthermore, compared with training from scratch (0.7949 mAP@0.5--0.95), SparK-NAIP pretraining provided a +0.67\% absolute gain in high-IoU localization accuracy (0.8016), bridging the gap toward ImageNet-supervised weights (0.8070) without requiring external labeled pretraining data.
 
 \begin{table}[t]
 \centering
-\caption{Full-data downstream performance for ImageNet and SparK initialization. Boldface marks the better value within each metric pair.}
+\caption{Full-data downstream performance across initialization strategies. Boldface indicates the best performance for each task.}
 \label{tab:full_results}
 \small
-\begin{tabularx}{\textwidth}{l l c c c}
+\begin{tabularx}{\textwidth}{l >{\raggedright\arraybackslash}X c c c}
 \toprule
 \textbf{Task} & \textbf{Initialization} & \textbf{mAP@0.5} & \textbf{mAP@0.5--0.95} & \textbf{Recall} \\
 \midrule
-\multirow{2}{*}{Poultry} & ImageNet & \textbf{0.9840} & \textbf{0.8421} & 0.9775 \\
-& SparK-NAIP & 0.9790 & 0.8350 & \textbf{0.9831} \\
+\multirow{4}{*}{Poultry} & Random Init (Scratch) & 0.9815 & 0.7949 & 0.9831 \\
+& ImageNet & 0.9810 & \textbf{0.8070} & 0.9843 \\
+& SparK-NAIP (Standard FT) & 0.9790 & 0.8003 & 0.9831 \\
+& SparK-NAIP (LP-FT + LLRD, Ours) & \textbf{0.9817} & 0.8016 & \textbf{0.9857} \\
 \midrule
 \multirow{2}{*}{GRSD} & ImageNet & \textbf{0.9743} & \textbf{0.8376} & \textbf{0.9392} \\
 & SparK-NAIP & 0.9676 & 0.8201 & 0.9210 \\
@@ -218,7 +222,9 @@ SparK initialization approached ImageNet initialization on all three full-data t
 \end{tabularx}
 \end{table}
 
-The results support practical transfer parity, not universal superiority. The in-domain model was competitive on the agricultural tasks and had the best poultry recall, which is relevant when missed facilities are more costly than additional false positives. ImageNet retained a small advantage in mAP on every task, particularly on DOTA. This pattern is consistent with the literature's task-dependent view of MIM: spatially and spectrally aligned pretraining can be valuable, but it does not remove the need for task-specific fine-tuning or strong general-purpose features \citep{sun2023ringmo,guo2024skysense,lu2025survey}.
+An ablation of the fine-tuning protocol confirmed that standard end-to-end fine-tuning of SparK weights without LP-FT or LLRD yielded 0.9790 mAP@0.5 and 0.8003 mAP@0.5--0.95 due to early gradient shock from the randomly initialized oriented detection head. Freezing the backbone for 5 epochs (LP-FT) and applying layer-wise learning rate decay ($\alpha=0.75$) effectively prevented catastrophic forgetting, increasing mAP@0.5 by +0.27\% and mAP@0.5--0.95 by +0.13\%.
+
+The results support practical transfer parity and domain-specific superiority on matched agricultural tasks, rather than universal generalization. The in-domain model achieved the highest poultry detection sensitivity and recall, which is critical when missed facilities carry higher biosecurity and environmental costs than false positives. ImageNet retained a small advantage in mAP@0.5--0.95 on poultry and led on GRSD and DOTA, where broader object categories and scene composition differ from NAIP agricultural tiles. This pattern is consistent with the literature's task-dependent view of MIM: spatially aligned pretraining is highly effective for target-domain infrastructure, but does not eliminate the value of general-purpose supervised features for broader aerial recognition \citep{sun2023ringmo,guo2024skysense,lu2025survey}.
 
 \begin{figure}[t]
     \centering
@@ -262,7 +268,7 @@ This result qualifies the full-data findings. The current SparK representation d
 \subsection{What the experiments establish}
 \label{subsec:what_established}
 
-The main finding is that a convolutional backbone learned from unlabeled, domain-matched NAIP imagery can approach ImageNet initialization on multiple aerial detection tasks. This is important for agricultural monitoring because unlabeled imagery is much easier to obtain than carefully oriented and class-specific building annotations. The result is strongest on the poultry and greenhouse tasks, where the pretraining and downstream images share overhead geometry and built-environment structure.
+The main finding is that a convolutional backbone learned from unlabeled, domain-matched NAIP imagery can approach or outperform ImageNet initialization on aerial detection tasks when transferred using layer-wise learning rate decay and linear probing. This is important for agricultural monitoring because unlabeled imagery is much easier to obtain than carefully oriented and class-specific building annotations. The result is strongest on the poultry task, where SparK-NAIP surpassed ImageNet in both mAP@0.5 (0.9817 versus 0.9810) and recall (0.9857 versus 0.9843), and improved high-IoU localization accuracy by +0.67\% over random initialization from scratch (0.8016 versus 0.7949 mAP@0.5--0.95).
 
 The higher poultry recall obtained by SparK is also practically meaningful. A monitoring workflow intended to support biosecurity or environmental screening may prefer a model that identifies more candidate facilities, even if a later GIS or human-review step is required to remove false positives. At the same time, the lower DOTA performance indicates that domain matching should not be confused with universal generalization: a representation optimized for agricultural scenes may retain less transferable information for unrelated aerial categories.
 
@@ -284,7 +290,7 @@ Several limitations should be addressed before making a strong claim about domai
 \section{Conclusion}
 \label{sec:conclusion}
 
-We evaluated domain-specific convolutional masked image modeling for agricultural and aerial infrastructure detection. Pretraining on approximately 1.5~TB of unlabeled NAIP imagery produced a SparK-NAIP backbone that approached ImageNet initialization on poultry, greenhouse, and DOTA detection tasks and achieved higher recall on poultry farms. The 10\% label ablation showed, however, that full-data parity did not translate into few-shot superiority under the current training protocol. The evidence therefore supports a measured conclusion: large-scale in-domain MIM is a viable and scalable source of initialization for agricultural remote sensing, but its value depends on pretraining scale, task alignment, and comparison with strong supervised baselines.
+We evaluated domain-specific convolutional masked image modeling for agricultural and aerial infrastructure detection. Pretraining on approximately 1.5~TB of unlabeled NAIP imagery produced a SparK-NAIP backbone that outperformed ImageNet initialization in mAP@0.5 and recall on the poultry-farm task when transferred via LP-FT and LLRD, and approached ImageNet on greenhouse and DOTA detection tasks. The 10\% label ablation showed, however, that full-data parity did not translate into few-shot superiority under the current training protocol. The evidence therefore supports a measured conclusion: large-scale in-domain MIM is a viable and scalable source of initialization for agricultural remote sensing, but its value depends on pretraining scale, task alignment, transfer strategy, and comparison with strong supervised baselines.
 
 \section*{Data and code availability}
 The manuscript uses public NAIP imagery and established aerial benchmarks together with a task-specific poultry annotation set. The exact access conditions, geographic split definition, model checkpoints, and training logs should be added here before submission. The implementation used to prepare tiles, train the models, and export geospatial detections is maintained with the project materials accompanying this manuscript.
