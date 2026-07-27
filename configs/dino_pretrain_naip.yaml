@@ -1,0 +1,46 @@
+# Domain-Adaptive DINO Pre-Training Configuration
+# Dataset: E:\NAIP_Dataset_PH (using pre-indexed data_catalog.csv)
+# Hardware Target: NVIDIA GeForce RTX 4090 (24 GB VRAM) & Intel Core i9-14900KF (24 Cores / 32 Threads)
+
+# ==========================================
+# 1. DATASET & PATHS
+# ==========================================
+data_root: "E:\\NAIP_Dataset_PH"
+catalog_path: "trained_models/data_catalog.csv"
+output_dir: "runs/dino_pretrain"
+
+# ==========================================
+# 2. MODEL ARCHITECTURE
+# ==========================================
+model_name: "B"            # Vision Transformer size: S (Small), B (Base - 86M params), L (Large), H (Huge)
+channels: 3                # Input spectral bands (RGB/TCI)
+patch_size: 16             # ViT patch size (16x16)
+dino_out_dim: 65536        # Projection head output prototype dimension (K)
+
+# ==========================================
+# 3. MULTI-CROP DATA AUGMENTATION
+# ==========================================
+crop_size: 224             # Resolution of global teacher/student crops
+local_crop_size: 96        # Resolution of local student crops
+num_global_crops: 2        # Number of global crops per tile
+num_local_crops: 8         # Number of local crops per tile
+
+# ==========================================
+# 4. TRAINING & HYPERPARAMETERS
+# ==========================================
+batch_size: 32             # Optimal for RTX 4090 24GB VRAM in BF16 (320 crops/step)
+epochs: 20                 # Total pre-training epochs
+epoch_size: 2500           # Number of batches per epoch (2500 batches * 32 = 80,000 images/epoch, ~12 min on RTX 4090)
+precision: "bf16"          # Mixed precision: bf16 (Ada Lovelace Tensor Cores) or fp16 / fp32
+learning_rate: 0.0005      # AdamW peak learning rate
+weight_decay: 0.04         # Initial cosine schedule weight decay
+weight_decay_end: 0.40     # Final weight decay
+teacher_momentum_start: 0.996 # EMA momentum starting value
+teacher_momentum_end: 1.0  # EMA momentum ending value
+warmup_epochs: 2           # Linear warmup epochs for learning rate & teacher temperature
+
+# ==========================================
+# 5. HARDWARE & SYSTEM OPTIMIZATION
+# ==========================================
+num_workers: 4             # Dataloader CPU worker processes (optimized for 32 threads)
+resume: true               # Resume from last.pt checkpoint if present in output_dir

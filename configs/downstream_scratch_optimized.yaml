@@ -1,0 +1,68 @@
+# downstream_scratch_optimized.yaml
+# =================================
+# Optimized hyperparameter configuration for comparing YOLO11l-OBB poultry house detection:
+#   1. imagenet_baseline  — Official Ultralytics ImageNet weights (baseline)
+#   2. random_init        — Random weight initialization from scratch (ablation)
+#   3. spark_scratch_lpft — Our SparK Trained-from-Scratch backbone with LP-FT + LLRD (ours)
+#
+# Optimized Hyperparameters:
+#   - lp_epochs: 3             (Reduced from 5 to give 47 epochs of end-to-end FT)
+#   - layer_decay: 0.82        (Increased from 0.75 for better aerial feature adaptation)
+#   - lr0: 0.0015              (Boosted from 0.0010 for faster head convergence)
+#   - warmup_epochs: 5         (Extended warmup for stability)
+#   - degrees: 45.0            (Boosted from 15.0 for aerial OBB orientation invariance)
+#   - scale: 0.5               (Multi-scale aerial zoom invariance)
+#
+# All results will be saved to: runs/downstream_scratch_hyperparameter
+
+paths:
+  spark_backbone_pt: "trained_models/spark-scratch/af8e64a7ed89_yolo11l_fp16/backbone_dense_ep299.pt"
+  data_yaml: "configs/poultry_obb.yaml"
+  output_dir: "runs/downstream_scratch_hyperparameter"
+
+training:
+  epochs: 50             # 50-epoch budget
+  imgsz: 640
+  batch: 16
+  device: 0
+  optimizer: "AdamW"
+  lr0: 0.0015            # Optimized: stronger initial signal for OBB head
+  lrf: 0.01              # Cosine decay target
+  warmup_epochs: 5       # Optimized: longer warmup for stability
+  cos_lr: true
+  weight_decay: 0.0005
+  momentum: 0.937
+  hsv_h: 0.015
+  hsv_s: 0.7
+  hsv_v: 0.4
+  degrees: 45.0          # Optimized: increased rotation invariance for aerial OBB
+  scale: 0.5             # Optimized: multi-scale zoom invariance
+  flipud: 0.5
+  fliplr: 0.5
+  mosaic: 1.0
+  close_mosaic: 10
+  amp: true
+  workers: 8
+  verbose: true
+  exist_ok: true
+  plots: true
+
+lpft_llrd:
+  lp_epochs: 3           # Optimized: 3 epochs Linear Probing (47 epochs full FT)
+  layer_decay: 0.82      # Optimized: LLRD alpha = 0.82
+
+experiments:
+  - name: "imagenet_baseline"
+    use_spark: false
+    is_random: false
+    use_lpft_llrd: false
+
+  - name: "random_init"
+    use_spark: false
+    is_random: true
+    use_lpft_llrd: false
+
+  - name: "spark_scratch_lpft"
+    use_spark: true
+    is_random: false
+    use_lpft_llrd: true
