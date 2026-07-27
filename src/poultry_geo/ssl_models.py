@@ -626,8 +626,8 @@ class RemoteSensingViT(nn.Module):
         # Map internal config names to timm model names
         # Standard ViT models in timm
         timm_map = {
-            384: "vit_small_patch16_224",
-            768: "vit_base_patch16_224",
+            384: "vit_small_patch16_224.dino",
+            768: "vit_base_patch16_224.dino",
             1024: "vit_large_patch16_224",
             1280: "vit_huge_patch14_224_in21k",
         }

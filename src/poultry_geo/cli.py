@@ -622,6 +622,66 @@ def build_parser() -> argparse.ArgumentParser:
     train_spark_parser.add_argument("--learning-rate", type=float, default=1e-3)
     train_spark_parser.add_argument("--device", default=None, help="Execution device, for example cpu, gpu, cuda:0, or mps.")
 
+    train_dino_parser = _add_command_parser(
+        subparsers,
+        "train-dino",
+        help_text="Train a Domain-Adaptive DINO self-supervised Vision Transformer on NAIP tiles.",
+        description=dedent(
+            """
+            Train a DINO-style self-distillation objective without labels using a Vision Transformer
+            student and EMA teacher across global and local multi-crop views.
+            """
+        ).strip(),
+        epilog=dedent(
+            """
+            Examples:
+              poultry-geo train-dino tmp/test_jpg runs/dino --batch-size 16 --model-name S --precision bf16
+              poultry-geo train-dino tmp/test_jpg runs/dino --batch-size 32 --model-name B --dino-out-dim 65536 --epochs 100 --resume
+            """
+        ).strip(),
+    )
+    train_dino_parser.add_argument("data_root", nargs="?", default=None, help="Dataset root directory (optional if specified in --config).")
+    train_dino_parser.add_argument("output_dir", nargs="?", default=None, help="Output directory (optional if specified in --config).")
+    train_dino_parser.add_argument("--config", "-c", dest="config", default=None, help="Path to YAML config file for DINO training.")
+    train_dino_parser.add_argument("--batch-size", type=int, default=16)
+    train_dino_parser.add_argument("--crop-size", type=int, default=224)
+    train_dino_parser.add_argument("--local-crop-size", type=int, default=96)
+    train_dino_parser.add_argument("--channels", type=int, default=None)
+    train_dino_parser.add_argument("--precision", default="fp32", choices=["fp32", "fp16", "bf16", "nf4"])
+    train_dino_parser.add_argument("--model-name", default="B", choices=["S", "B", "L", "H"])
+    train_dino_parser.add_argument("--patch-size", type=int, default=16)
+    train_dino_parser.add_argument("--dino-out-dim", type=int, default=65536)
+    train_dino_parser.add_argument("--num-global-crops", type=int, default=2)
+    train_dino_parser.add_argument("--num-local-crops", type=int, default=8)
+    train_dino_parser.add_argument("--epochs", type=int, default=100)
+    train_dino_parser.add_argument("--learning-rate", type=float, default=5e-4)
+    train_dino_parser.add_argument("--weight-decay", type=float, default=0.04)
+    train_dino_parser.add_argument("--weight-decay-end", type=float, default=0.40)
+    train_dino_parser.add_argument("--teacher-momentum-start", type=float, default=0.996)
+    train_dino_parser.add_argument("--teacher-momentum-end", type=float, default=1.0)
+    train_dino_parser.add_argument("--warmup-epochs", type=int, default=2)
+    train_dino_parser.add_argument("--num-workers", type=int, default=4)
+    train_dino_parser.add_argument("--device", default=None, help="Execution device, for example cpu, gpu, cuda:0, or mps.")
+    train_dino_parser.add_argument("--resume", action="store_true", help="Resume training from last.pt if present.")
+    train_dino_parser.add_argument("--epoch-size", dest="epoch_size", type=int, default=None, help="Optional number of batches per epoch (default: full dataloader length).")
+    train_dino_parser.add_argument("--catalog", "--catalog-path", dest="catalog_path", default=None, help="Optional CSV catalog file containing paths to tiles for instant loading.")
+
+    dino_vis_parser = _add_command_parser(
+        subparsers,
+        "visualize-dino-similarity",
+        help_text="Generate DINO / DINOv3 cosine similarity maps and PCA feature visualizations.",
+        description="Visualize unsupervised cosine similarity, salience, and feature segmentation maps from DINO.",
+    )
+    dino_vis_parser.add_argument("images", nargs="+", help="Image tile file paths to visualize.")
+    dino_vis_parser.add_argument("--model-name", default="B", choices=["S", "B", "L", "H"], help="ViT architecture size.")
+    dino_vis_parser.add_argument("--checkpoint", default=None, help="Optional path to DINO checkpoint .pt file.")
+    dino_vis_parser.add_argument("--output-dir", default="runs/dino_visualizations", help="Output folder for generated heatmaps.")
+    dino_vis_parser.add_argument("--patch-size", type=int, default=16, help="ViT patch size (default 16).")
+    dino_vis_parser.add_argument("--query-x", type=int, default=None, help="Optional X pixel coordinate for query patch.")
+    dino_vis_parser.add_argument("--query-y", type=int, default=None, help="Optional Y pixel coordinate for query patch.")
+    dino_vis_parser.add_argument("--device", default=None, help="Execution device.")
+
+
     mississippi_pretrain_parser = _add_command_parser(
         subparsers,
         "mississippi-pretrain",
@@ -1416,6 +1476,9 @@ def main(argv: list[str] | None = None) -> int:
             import poultry_geo.models as models
 
             device = _resolve_torch_device_alias(args.device)
+            if device.type == "cuda":
+                torch.backends.cudnn.benchmark = True
+                
             train_loader, val_loader = naip_data.get_dataloaders(
                 args.data_root,
                 batch_size=args.batch_size,
@@ -1473,7 +1536,7 @@ def main(argv: list[str] | None = None) -> int:
                 epoch_loss = 0
                 epoch_start_time = time.time()
                 for i, batch in enumerate(train_loader):
-                    img = batch["image"].to(device)
+                    img = batch["image"].to(device, non_blocking=True)
                     loss = train_spark_ssl.train_one_step(
                         model, optimizer, scaler, transformer, img, config
                     )
@@ -1504,7 +1567,221 @@ def main(argv: list[str] | None = None) -> int:
 
             return 0
 
+        if args.command == "train-dino":
+            import os
+            import time
+            import json
+            import platform
+            import torch
+            import pandas as pd
+            from poultry_geo.dino import build_dino_model, cosine_momentum_schedule
+            from poultry_geo.dino_loss import CompositeDINOLoss
+            from poultry_geo.dino_augment import get_dino_dataloaders
+            from poultry_geo.train_dino_ssl import train_one_step, save_dino_checkpoint, load_dino_checkpoint
+
+            if getattr(args, "config", None):
+                import yaml
+                with open(args.config, "r", encoding="utf-8") as f:
+                    cfg_data = yaml.safe_load(f) or {}
+                for k, v in cfg_data.items():
+                    if hasattr(args, k):
+                        setattr(args, k, v)
+            if not getattr(args, "data_root", None) or not getattr(args, "output_dir", None):
+                raise ValueError("Both data_root and output_dir must be specified via CLI arguments or YAML config (--config).")
+
+            device = _resolve_torch_device_alias(args.device)
+            if device.type == "cuda":
+                torch.backends.cudnn.benchmark = True
+                if hasattr(torch, "set_float32_matmul_precision"):
+                    torch.set_float32_matmul_precision("high")
+
+            os.makedirs(args.output_dir, exist_ok=True)
+            experiment_info = {
+                "system": platform.platform(),
+                "python_version": platform.python_version(),
+                "device": str(device),
+                "args": vars(args),
+                "start_time": time.time(),
+            }
+            with open(os.path.join(args.output_dir, "experiment_info.json"), "w") as f:
+                json.dump(experiment_info, f, indent=4)
+
+            train_loader, val_loader = get_dino_dataloaders(
+                root=args.data_root,
+                batch_size=args.batch_size,
+                crop_size=args.crop_size,
+                local_crop_size=args.local_crop_size,
+                num_global_crops=args.num_global_crops,
+                num_local_crops=args.num_local_crops,
+                channels=args.channels,
+                precision=args.precision,
+                num_workers=args.num_workers,
+                catalog_path=args.catalog_path,
+            )
+
+            import random
+            all_train_files = list(getattr(train_loader.dataset, "files", []))
+            if len(all_train_files) > 0:
+                vis_sample_files = random.sample(all_train_files, min(5, len(all_train_files)))
+                print(f"Selected {len(vis_sample_files)} sample tiles for after-epoch DINO similarity visualizations.")
+            else:
+                vis_sample_files = []
+
+            model = build_dino_model(
+                model_name=args.model_name,
+                channels=args.channels or 3,
+                crop_size=args.crop_size,
+                patch_size=args.patch_size,
+                dino_out_dim=args.dino_out_dim,
+                precision=args.precision,
+            ).to(device)
+
+            loss_fn = CompositeDINOLoss(
+                out_dim=args.dino_out_dim,
+                warmup_teacher_temp_epochs=args.warmup_epochs,
+            ).to(device)
+
+            optimizer = torch.optim.AdamW(
+                list(model.student_backbone.parameters()) + list(model.student_head.parameters()),
+                lr=args.learning_rate,
+                weight_decay=args.weight_decay,
+            )
+            scaler = torch.amp.GradScaler("cuda", enabled=(args.precision == "fp16"))
+
+            start_epoch = 0
+            last_checkpoint_path = os.path.join(args.output_dir, "last.pt")
+            if args.resume and os.path.exists(last_checkpoint_path):
+                print(f"Resuming DINO training from {last_checkpoint_path}...")
+                ckpt = load_dino_checkpoint(
+                    last_checkpoint_path,
+                    model=model,
+                    loss_fn=loss_fn,
+                    optimizer=optimizer,
+                    scaler=scaler,
+                    device=device,
+                )
+                start_epoch = int(ckpt.get("epoch", -1)) + 1
+
+            batches_per_epoch = args.epoch_size if (getattr(args, "epoch_size", None) and args.epoch_size > 0) else len(train_loader)
+            total_steps = batches_per_epoch * args.epochs
+            history: list[dict[str, Any]] = []
+
+            for epoch in range(start_epoch, args.epochs):
+                model.train()
+                epoch_start_time = time.time()
+                epoch_loss = 0.0
+                epoch_dino = 0.0
+                epoch_koleo = 0.0
+                epoch_entropy = 0.0
+                n_batches = 0
+
+                for i, batch in enumerate(train_loader):
+                    if getattr(args, "epoch_size", None) and args.epoch_size > 0 and i >= args.epoch_size:
+                        break
+                    global_step = epoch * batches_per_epoch + i
+                    momentum = cosine_momentum_schedule(
+                        step=global_step,
+                        total_steps=total_steps,
+                        momentum_start=args.teacher_momentum_start,
+                        momentum_end=args.teacher_momentum_end,
+                    )
+                    metrics = train_one_step(
+                        model=model,
+                        optimizer=optimizer,
+                        scaler=scaler,
+                        loss_fn=loss_fn,
+                        batch=batch,
+                        device=device,
+                        precision=args.precision,
+                        momentum=momentum,
+                        epoch=epoch,
+                    )
+                    epoch_loss += metrics["loss"]
+                    epoch_dino += metrics["dino_loss"]
+                    epoch_koleo += metrics["koleo_loss"]
+                    epoch_entropy += metrics["prototype_entropy"]
+                    n_batches += 1
+
+                    completed_work = epoch * batches_per_epoch + i + 1
+                    avg_loss_so_far = epoch_loss / max(1, n_batches)
+                    lr_current = optimizer.param_groups[0]["lr"]
+                    detail_str = (
+                        f"E{epoch+1}/{args.epochs} B{i+1}/{batches_per_epoch} "
+                        f"Loss:{metrics['loss']:.4f} (Avg:{avg_loss_so_far:.4f}) "
+                        f"DINO:{metrics['dino_loss']:.4f} KoLeo:{metrics['koleo_loss']:.4f} "
+                        f"Ent:{metrics['prototype_entropy']:.1f} LR:{lr_current:.1e}"
+                    )
+                    if progress_callback is not None:
+                        progress_callback(completed_work, total_steps, detail=detail_str)
+                    elif i % 10 == 0:
+                        print(f"[{detail_str}]")
+
+                duration = time.time() - epoch_start_time
+                avg_loss = epoch_loss / max(1, n_batches)
+                avg_dino = epoch_dino / max(1, n_batches)
+                avg_koleo = epoch_koleo / max(1, n_batches)
+                avg_entropy = epoch_entropy / max(1, n_batches)
+
+                print(
+                    f"Epoch {epoch} complete in {duration:.2f}s | "
+                    f"Avg Loss: {avg_loss:.4f} | Avg Entropy: {avg_entropy:.2f}"
+                )
+
+                history.append({
+                    "epoch": epoch + 1,
+                    "train_loss": avg_loss,
+                    "train_dino_loss": avg_dino,
+                    "train_koleo_loss": avg_koleo,
+                    "prototype_entropy": avg_entropy,
+                    "epoch_duration_seconds": duration,
+                })
+                pd.DataFrame(history).to_csv(os.path.join(args.output_dir, "metrics.csv"), index=False)
+
+                save_dino_checkpoint(
+                    model=model,
+                    loss_fn=loss_fn,
+                    optimizer=optimizer,
+                    scaler=scaler,
+                    epoch=epoch,
+                    config=args,
+                    output_dir=args.output_dir,
+                )
+
+                if len(vis_sample_files) > 0:
+                    from poultry_geo.dino_vis import generate_dino_visualizations_from_backbone
+                    vis_epoch_dir = os.path.join(args.output_dir, "vis", str(epoch + 1))
+                    generate_dino_visualizations_from_backbone(
+                        backbone=model.teacher_backbone,
+                        image_paths=vis_sample_files,
+                        output_dir=vis_epoch_dir,
+                        patch_size=args.patch_size,
+                        device=device,
+                    )
+
+            experiment_info["end_time"] = time.time()
+            experiment_info["total_duration_seconds"] = experiment_info["end_time"] - experiment_info["start_time"]
+            with open(os.path.join(args.output_dir, "experiment_info.json"), "w") as f:
+                json.dump(experiment_info, f, indent=4)
+
+            return 0
+
+        if args.command == "visualize-dino-similarity":
+            from poultry_geo.dino_vis import generate_dino_visualizations
+            saved = generate_dino_visualizations(
+                image_paths=args.images,
+                model_name=args.model_name,
+                checkpoint_path=args.checkpoint,
+                output_dir=args.output_dir,
+                patch_size=args.patch_size,
+                query_x=args.query_x,
+                query_y=args.query_y,
+                device=args.device,
+            )
+            print(f"Generated {len(saved)} DINO similarity visualizations in {args.output_dir}")
+            return 0
+
         if args.command == "mississippi-pretrain":
+
             from poultry_geo.train_mississippifm import load_mississippifm_config, train_mississippifm
 
             config = load_mississippifm_config(args.config_path)
