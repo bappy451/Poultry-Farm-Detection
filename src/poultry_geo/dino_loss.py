@@ -52,18 +52,22 @@ class DINOLoss(nn.Module):
 
         temp_t = self._get_teacher_temp(epoch)
 
-        # Compute teacher probability distributions with centering
+        # Compute teacher probability distributions with centering (in FP32)
         teacher_probs: list[torch.Tensor] = []
         for t_logit in teacher_logits:
-            centered = (t_logit.detach() - self.center) / temp_t
+            # Force FP32 for softmax to avoid BF16 underflow with 65536 classes
+            t_logit_fp32 = t_logit.detach().float()
+            center_fp32 = self.center.float()
+            centered = (t_logit_fp32 - center_fp32) / temp_t
             teacher_probs.append(F.softmax(centered, dim=-1))
 
-        # Compute student log probabilities
+        # Compute student log probabilities (in FP32)
         student_log_probs: list[torch.Tensor] = []
         for s_logit in student_logits:
-            student_log_probs.append(F.log_softmax(s_logit / self.student_temp, dim=-1))
+            s_logit_fp32 = s_logit.float()
+            student_log_probs.append(F.log_softmax(s_logit_fp32 / self.student_temp, dim=-1))
 
-        total_loss = torch.zeros(1, device=student_logits[0].device, dtype=student_logits[0].dtype)
+        total_loss = torch.zeros(1, device=student_logits[0].device, dtype=torch.float32)
         n_loss_terms = 0
 
         for j, t_prob in enumerate(teacher_probs):
@@ -85,13 +89,17 @@ class DINOLoss(nn.Module):
             t_prob_concat = torch.cat(teacher_probs, dim=0)
             entropy = -(t_prob_concat * torch.log(t_prob_concat + 1e-8)).sum(dim=-1).mean().item()
 
-        return total_loss.squeeze(), float(entropy)
+        # Cast loss back to original dtype for autograd if necessary, or just keep as fp32 (PyTorch allows fp32 loss in AMP)
+        return total_loss.squeeze().to(student_logits[0].dtype), float(entropy)
 
     @torch.no_grad()
     def update_center(self, teacher_logits: Sequence[torch.Tensor]) -> None:
         """EMA update of the prototype centering vector."""
-        batch_center = torch.cat(teacher_logits, dim=0).mean(dim=0, keepdim=True)
+        # Use FP32 for precision in centering vector EMA
+        batch_center = torch.cat(teacher_logits, dim=0).mean(dim=0, keepdim=True).float()
+        self.center.data = self.center.data.float()
         self.center.mul_(self.center_momentum).add_((1.0 - self.center_momentum) * batch_center)
+        self.center.data = self.center.data.to(teacher_logits[0].dtype)
 
 
 class KoLeoLoss(nn.Module):
@@ -156,11 +164,17 @@ class iBOTPatchLoss(nn.Module):
 
         # Update patch centering vector
         with torch.no_grad():
-            batch_center = t_logits.mean(dim=(0, 1), keepdim=True)
+            batch_center = t_logits.mean(dim=(0, 1), keepdim=True).float()
+            self.patch_center.data = self.patch_center.data.float()
             self.patch_center.mul_(self.center_momentum).add_((1.0 - self.center_momentum) * batch_center)
+            self.patch_center.data = self.patch_center.data.to(t_logits.dtype)
 
-        t_probs = F.softmax((t_logits - self.patch_center) / temp_t, dim=-1)
-        s_log_probs = F.log_softmax(student_patch_logits / self.student_temp, dim=-1)
+        # Force FP32 for softmax stability
+        t_logits_fp32 = t_logits.float()
+        patch_center_fp32 = self.patch_center.float()
+        
+        t_probs = F.softmax((t_logits_fp32 - patch_center_fp32) / temp_t, dim=-1)
+        s_log_probs = F.log_softmax(student_patch_logits.float() / self.student_temp, dim=-1)
 
         loss_per_token = -(t_probs * s_log_probs).sum(dim=-1)  # [B, N]
         if mask is not None and mask.any():
@@ -168,7 +182,7 @@ class iBOTPatchLoss(nn.Module):
         else:
             loss = loss_per_token.mean()
 
-        return loss.squeeze()
+        return loss.squeeze().to(student_patch_logits.dtype)
 
 
 class CompositeDINOLoss(nn.Module):

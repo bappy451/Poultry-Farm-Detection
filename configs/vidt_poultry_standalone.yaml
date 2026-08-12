@@ -1,0 +1,25 @@
+# ViDT+ Standalone Training Configuration for Poultry House Dataset
+# Optimized for Domain-Adaptive DINO features + DETR bipartite matching
+
+paths:
+  dino_checkpoint_dir: "runs/dino_pretrain"
+  output_dir: "runs/vidt_poultry_standalone"
+
+dataset:
+  yaml: "configs/poultry_obb.yaml"
+  name: "poultry_houses"
+
+training:
+  epochs: 300            # Extended epochs required for DETR matching to stabilize
+  imgsz: 640             # High-res input for detection
+  batch: 8               # Micro-batch size per step (fits cleanly in 24GB GPU)
+  accum_steps: 2         # Gradient accumulation steps (8 * 2 = 16 effective batch size)
+  lr: 0.00005            # DETR decoder learning rate (5e-5)
+  weight_decay: 0.0001   # Standard DETR weight decay
+  num_workers: 4         # Optimized for Windows
+  device: "cuda"
+
+model:
+  name: "ViDT-Plus"
+  init_strategy: "dino"  # Will load DINO pre-trained weights into the backbone
+  num_det_tokens: 300    # Number of object queries

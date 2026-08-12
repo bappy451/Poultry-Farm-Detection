@@ -1,0 +1,12 @@
+\section{Discussion and Limitations}
+\label{sec:discussion}
+
+While our domain-adaptive self-distillation approach demonstrates compelling parity with supervised baselines under full-data conditions, our ablation studies highlight critical limitations. The observed fragility of the DINO-pretrained backbone in the 10\% few-shot regime suggests that current self-distillation objectives, which optimize global semantic separability, may lack the dense pixel-level priors required to quickly adapt to oriented bounding box tasks when downstream data is sparse. Future work must investigate integrating dense contrastive loss mechanisms or increasing the pre-training resolution to preserve spatial acuity.
+
+Furthermore, while NAIP imagery is a rich resource for North American topologies, the spectral and geographic biases inherently present in the dataset limit the zero-shot transferability of this model to radically different environments (e.g., tropical or arid non-US regions). 
+
+\section{Broader Impact}
+The scalable automated detection of poultry farms has significant positive implications for epidemiological tracking, particularly for managing avian influenza outbreaks. By enabling low-cost, high-frequency updates to agricultural maps, authorities can better orchestrate biosecurity protocols. However, the dual-use nature of high-resolution Earth Observation foundation models necessitates ethical consideration. The democratization of such highly capable mapping tools could inadvertently expose vulnerable infrastructure to malicious targeting, requiring responsible release policies for the resulting weights.
+
+\section{Conclusion}
+This study presented a highly scalable, domain-adaptive self-distillation foundation model utilizing the pure DINO framework over 9.87 million NAIP tiles. By leveraging the DINO objective and centering teacher outputs, our ViT-Base architecture successfully circumvented dimensional collapse. The resulting model matched the supervised ImageNet standards on high-resolution poultry farm segmentation. While full-data transfer proved exceptional, our rigorous few-shot ablation exposed the fragility of high-capacity models trained from scratch under label scarcity. These findings systematically position pure self-distillation as a powerful mechanism for Earth Observation while clarifying the critical thresholds required for robust few-shot generalization.

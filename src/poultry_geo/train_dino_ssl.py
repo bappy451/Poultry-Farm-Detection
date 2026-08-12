@@ -114,6 +114,18 @@ def save_dino_checkpoint(
     last_path = output_path / "last.pt"
     torch.save(checkpoint, last_path)
 
+    # Automatically prune old intermediate checkpoints to prevent C: drive exhaustion (~350+ GB savings)
+    # Preserve milestone epochs (multiples of 50) and the last 3 epochs
+    for old_ep in range(0, epoch - 2):
+        if old_ep % 50 != 0:
+            for prefix in ("dino_unified_ep", "backbone_dino_ep"):
+                old_file = output_path / f"{prefix}{old_ep}.pt"
+                if old_file.exists():
+                    try:
+                        old_file.unlink()
+                    except OSError:
+                        pass
+
     return unified_path, backbone_path
 
 

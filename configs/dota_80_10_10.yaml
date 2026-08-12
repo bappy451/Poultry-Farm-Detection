@@ -1,0 +1,22 @@
+path: C:\Users\mza0288\Documents\Poultry-Farm-Detection\datasets\dota_80_10_10
+train: images/train
+val: images/val
+test: images/test
+nc: 16
+names:
+  0: plane
+  1: ship
+  2: storage-tank
+  3: baseball-diamond
+  4: tennis-court
+  5: basketball-court
+  6: ground-track-field
+  7: harbor
+  8: bridge
+  9: small-vehicle
+  10: large-vehicle
+  11: roundabout
+  12: swimming-pool
+  13: helicopter
+  14: soccer-ball-field
+  15: container-crane

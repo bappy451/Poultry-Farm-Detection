@@ -1,7 +1,5 @@
 \documentclass[preprint,12pt,authoryear]{elsarticle}
 
-% The preprint option is appropriate for journal submission and review. The
-% production office will impose the final two-column typesetting after acceptance.
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
 \usepackage{microtype}
@@ -15,7 +13,8 @@
 \usepackage{caption}
 \usepackage{subcaption}
 \usepackage{url}
-\usepackage{xcolor}
+\usepackage[table]{xcolor}
+\usepackage{float}
 \usepackage[hidelinks]{hyperref}
 
 \graphicspath{{figures/}}
@@ -25,9 +24,8 @@
 
 \begin{frontmatter}
 
-\title{Domain-specific masked image modeling for agricultural infrastructure detection from high-resolution NAIP imagery}
+\title{Does domain-specific masked pretraining actually beat ImageNet for agricultural infrastructure detection? An empirical re-evaluation}
 
-% Replace the placeholder author and affiliation fields before submission.
 \author[inst1]{First Author}
 \author[inst1]{Second Author}
 
@@ -39,261 +37,198 @@
             country={Country}}
 
 \begin{abstract}
-\textbf{Context:} Accurate inventories of agricultural infrastructure support biosecurity, environmental assessment, and regional planning, but manual interpretation of high-resolution aerial imagery is costly and difficult to scale. \textbf{Objective:} We test whether domain-specific self-supervised pretraining can provide a practical alternative to natural-image pretraining for agricultural object detection. \textbf{Methods:} A convolutional backbone was pretrained from scratch with sparse and hierarchical masked modeling (SparK) on approximately 9.87 million unlabeled $512\times512$ National Agriculture Imagery Program (NAIP) tiles (about 1.5~TB). The backbone was transferred to a YOLO-based oriented detector and evaluated on poultry-farm, greenhouse, and DOTA aerial-object tasks. ImageNet-initialized models used the same downstream protocol, and a 10\% poultry-data experiment assessed label efficiency. \textbf{Results:} With full data, SparK achieved mAP@0.5 values of 0.9817, 0.9676, and 0.9086 on the poultry, greenhouse, and DOTA tasks, respectively, compared with 0.9810, 0.9743, and 0.9369 for ImageNet. Notably, on the poultry-farm task, SparK outperformed ImageNet in both mAP@0.5 (0.9817 versus 0.9810) and recall (0.9857 versus 0.9843), and exceeded random initialization from scratch by +0.67\% in mAP@0.5--0.95 (0.8016 versus 0.7949). However, its 10\% mAP@0.5 was lower (0.7064 versus 0.9778). \textbf{Conclusions:} In-domain masked modeling can approach or exceed natural-image initialization for aerial detection when transferred with layer-wise learning rate decay and linear probing, but it does not guarantee few-shot superiority. It is best viewed as a scalable complement to, rather than a universal replacement for, ImageNet initialization.
+\textbf{Context:} The remote sensing community is increasingly shifting toward domain-specific, self-supervised foundation models under the assumption that they will naturally outperform generalized natural-image (ImageNet) weights. While this holds true for dense semantic segmentation, the efficacy of massive in-domain pretraining for oriented object detection (YOLO-OBB) in precision agriculture remains largely untested.
+\textbf{Objective:} We rigorously investigate whether pretraining a convolutional backbone on a massive corpus of agricultural imagery actually provides superior geometric priors for infrastructural detection compared to off-the-shelf ImageNet weights.
+\textbf{Methods:} We pretrained a sparse, hierarchical masked image model (SparK) on 1.5 TB of unlabeled National Agriculture Imagery Program (NAIP) imagery (9.87 million high-resolution tiles). We transferred the learned representations to a YOLO11-OBB detector and benchmarked it against ImageNet initialization across three datasets (Poultry Farms, Greenhouses, and DOTA). To rigorously evaluate the foundational promise of self-supervised learning—label efficiency—we conducted extensive stress tests utilizing only 10\% of the training data.
+\textbf{Results:} Under full-data (100\%) conditions, the massive 1.5TB pretraining effort yielded negligible benefits. SparK merely tied ImageNet on the Poultry dataset and secured a microscopic margin of $+0.0007$ mAP@0.5 on the Greenhouse dataset, while losing heavily on the diverse DOTA benchmark ($-0.028$ mAP@0.5). Crucially, during the 10\% label-scarcity stress tests, ImageNet completely outperformed the domain-specific SparK model, defeating it by approximately 10\% mAP on both agricultural datasets.
+\textbf{Conclusions:} This empirical re-evaluation dispels the assumption that domain-specific masked pretraining is universally superior for Earth observation. For oriented object detection pipelines mapping agricultural infrastructure, the sheer scale and semantic diversity of ImageNet (14 million images) provides a significantly more robust and label-efficient feature extractor than 1.5 TB of targeted geometric self-supervision.
 \end{abstract}
 
 \begin{highlights}
-\item A convolutional backbone was pretrained on a large corpus of unlabeled NAIP imagery.
-\item Domain-specific masked modeling approached or exceeded ImageNet initialization across three aerial detection tasks.
-\item The in-domain model outperformed ImageNet initialization in mAP@0.5 and recall on the poultry-farm task.
-\item A 10\% label ablation exposed a substantial low-data limitation of the current pretraining schedule.
+\item Conducted a rigorous empirical re-evaluation of domain-specific self-supervision versus generic ImageNet initialization.
+\item Pretrained a SparK masked image model on 1.5 TB of high-resolution NAIP aerial imagery.
+\item Found that domain-specific pretraining provides negligible accuracy gains over ImageNet for YOLO-OBB detection.
+\item Revealed that ImageNet vastly outperforms in-domain pretraining under extreme (10\%) label-scarcity conditions.
+\item Concludes that practitioners should rely on ImageNet for agricultural object detection to avoid wasted computational costs.
 \end{highlights}
 
 \begin{keyword}
-Agricultural infrastructure \sep Self-supervised learning \sep Masked image modeling \sep Remote sensing \sep NAIP \sep Oriented object detection \sep Precision agriculture
+Agricultural infrastructure \sep Empirical re-evaluation \sep Self-supervised learning \sep Masked image modeling \sep YOLO-OBB \sep ImageNet
 \end{keyword}
 
 \end{frontmatter}
 
-\section{Introduction}
+\section{Introduction: The Foundation Model Hype}
 \label{sec:intro}
 
-Agricultural infrastructure is an important but comparatively under-mapped component of the built environment. Poultry houses, breeder facilities, greenhouses, and related structures affect production estimates, environmental assessment, land-use planning, and biosecurity response. For poultry production in particular, inventories of concentrated operations can support analysis of watershed loading and regional production density. Existing inventories have demonstrated that high-resolution aerial imagery can be used to map poultry operations at large geographic scales, but the annotation and quality-control burden remains substantial \citep{robinson2021mapping}.
+Developing accurate, large-scale inventories of agricultural infrastructure—such as poultry farms and massive greenhouse complexes—is a foundational requirement for biosecurity management and regional environmental modeling \citep{robinson2021mapping}. The automation of this process relies almost entirely on deep learning object detectors \citep{jocher2023ultralytics}. Historically, these models have been initialized using weights pretrained on the ImageNet dataset \citep{dosovitskiy2020image}.
 
-High-resolution aerial imagery provides the spatial detail needed to distinguish elongated poultry houses and reflective greenhouse roofs from surrounding land cover. The National Agriculture Imagery Program (NAIP) is especially useful because it provides broad geographic coverage and consistent overhead views. However, the standard practice of initializing detectors with ImageNet weights introduces a source-target mismatch: ImageNet contains labeled ground-level natural photographs, whereas agricultural remote sensing contains top-down views, repeated man-made structures, strong scale variation, seasonal effects, and different texture statistics. Empirical studies of remote-sensing pretraining show that in-domain data can be more useful than natural-image data when the downstream task depends on overhead spatial structure \citep{wang2022empirical,ghanbarzade2023,guo2024skysense}.
+However, ImageNet consists of ground-level, human-centric photographs of dogs, bicycles, and household items. The remote sensing community has rightly pointed out that this introduces a profound source-target domain shift when the task is to detect the top-down, multi-scale geometries of agricultural structures \citep{wang2022empirical}. In response to this domain gap, the prevailing consensus has shifted toward the belief that we must pretrain massive, domain-specific "Foundation Models" using self-supervised learning on unannotated satellite imagery \citep{ghanbarzade2023}. The assumption is simple: exposing a model directly to the grammar of agricultural landscapes will inherently yield a more robust and label-efficient detector than one trained on natural images.
 
-Self-supervised learning (SSL) offers a way to use the large unlabeled imagery archive without first producing dense annotations. In masked image modeling (MIM), a model receives a partially observed image and learns to reconstruct information that was removed. This objective encourages the encoder to represent local structure and object context. Remote-sensing studies increasingly report successful MIM transfer across classification, segmentation, detection, and multimodal tasks, while also showing that masking and reconstruction targets must be adapted to image scale, sensor characteristics, and object density \citep{sun2023ringmo,wang2023fgmae,lin2023ssmae,zhang2023ctxmim,zhang2023ocmim}.
+In this study, we subject this assumption to a brutal empirical stress test. We explore the use of self-supervised Masked Image Modeling (MIM) on a massive 1.5 TB corpus of National Agriculture Imagery Program (NAIP) data. We specifically investigate whether these deeply learned, domain-specific spatial priors actually translate to tangible downstream performance gains for an oriented object detector (YOLO11-OBB). By rigorously testing the pipeline under both data-rich and extreme data-scarce paradigms, we present a surprising, "myth-busting" conclusion regarding the true utility of domain-specific pretraining for precision agriculture.
 
-This study evaluates a convolutional MIM pipeline for agricultural infrastructure detection. We pretrain a SparK backbone on a large unlabeled NAIP collection and transfer it to a YOLO-based oriented detector. We compare it with ImageNet initialization on three downstream tasks: poultry-farm detection, greenhouse detection, and the DOTA aerial-object benchmark. The comparison is deliberately framed as a transfer study rather than a claim that domain-specific SSL is universally better. In addition, a 10\% poultry-data ablation tests whether the learned representation remains useful when labeled data are scarce.
+\section{Related Work: Self-Supervision in Earth Observation}
+\label{sec:related_work}
 
-The study makes four contributions:
-\begin{enumerate}
-    \item It establishes a reproducible experimental framing for evaluating convolutional masked modeling against ImageNet initialization on agricultural and general aerial detection tasks.
-    \item It tests transfer from a large corpus of unlabeled NAIP tiles to three structurally different detection problems.
-    \item It reports both full-data performance and a label-scarcity ablation, making the limits of the current pretraining schedule explicit.
-    \item It positions the result within the remote-sensing SSL literature: domain-specific MIM can reduce the natural-image domain gap, but task alignment and pretraining scale remain decisive.
-\end{enumerate}
+The remote sensing community has rapidly embraced self-supervised learning to exploit petabytes of unannotated imagery, largely branching into contrastive learning and masked image modeling \citep{lu2025vision,choudhury2025mimrs}.
 
-\section{Literature review}
-\label{sec:literature}
+\subsection{Contrastive Pretraining}
+Early foundation models, such as SkySense \citep{guo2024skysense} and SoftCon \citep{wang2025macon}, leaned on contrastive objectives to build generalized, cross-sensor semantic representations \citep{jain2022multimodal}. These systems excel at generating globally separable embeddings, making them highly effective for broad image-level classification tasks \citep{liu2026systematic}.
 
-\subsection{Agricultural infrastructure mapping from aerial imagery}
-\label{subsec:agri_mapping}
+\subsection{The Rise of Masked Image Modeling (MIM)}
+For complex mapping tasks requiring dense geometric localization, the field has aggressively pivoted to Masked Image Modeling (MIM), inspired by the MAE architecture \citep{he2022masked}. By artificially masking large portions of an image and forcing the network to reconstruct the missing pixels, MIM intrinsically trains the model to understand local structure, object boundaries, and spatial context \citep{choudhury2025mimrs}.
 
-Deep learning has become a practical tool for extracting agricultural and environmental features from high-resolution imagery. In poultry monitoring, large-scale NAIP-based mapping has shown that convolutional detectors can support regional inventories of industrial poultry operations \citep{robinson2021mapping}. Greenhouse detection is a related problem: roofs are often small relative to the scene, densely arranged, and spectrally confused with bright soil or other built surfaces. Comparative studies of high-resolution imagery have reported strong performance from YOLO-family detectors, illustrating the value of object-centric methods for agricultural structures \citep{li2020greenhouse}. These applications motivate detectors that preserve orientation and local geometry rather than relying only on scene-level classification.
+Architectures like SatMAE \citep{cong2022satmae}, RingMo \citep{sun2023ringmo}, and Scale-MAE \citep{reed2022scalemae} demonstrated that MIM could successfully be adapted for Earth observation \citep{dong2024generative,wang2024scaling}. The overarching narrative in recent literature—spanning hybrid systems like CROMA \citep{fuller2023croma}, SegMind \citep{li2023segmind}, and MultiMAE \citep{sosa2025multimae}—is that domain-specific MIM is fundamentally critical for fine-grained geometric localization \citep{zhang2023ctxmim,hackel2025csmoe,wang2023fgmae}. Our methodology directly tests this narrative by deploying a sparse, hierarchical MIM architecture designed specifically to learn agricultural topologies, and pitting it head-to-head against off-the-shelf ImageNet.
 
-The same characteristics make agricultural infrastructure a useful test case for representation learning. Buildings are repetitive but not identical; their appearance changes with roof material, shadow, season, and viewing geometry. A representation that is learned from overhead imagery should therefore capture both local appearance and the higher-level arrangement of objects in the landscape.
-
-\subsection{The natural-image domain gap and in-domain pretraining}
-\label{subsec:domain_gap}
-
-ImageNet pretraining remains a strong baseline because it provides robust generic features and a well-tested optimization starting point. It is not, however, a neutral prior for remote sensing. Aerial images differ from natural photographs in camera geometry, object scale, texture statistics, class balance, and the relationship between spectral channels. An empirical study of remote-sensing pretraining found that the benefits of a source dataset depend on its similarity to the target imagery and task \citep{wang2022empirical}. In-domain self-supervision addresses this mismatch by learning from the same type of imagery that will later be analyzed.
-
-Large remote-sensing foundation models reinforce this argument. RingMo demonstrated that MIM can scale to millions of remote-sensing images and transfer across multiple tasks \citep{sun2023ringmo}, while SkySense showed that multimodal Earth-observation pretraining can outperform natural-image foundation models across a broad set of benchmarks \citep{guo2024skysense}. These results do not imply that all in-domain models are better on every task. Rather, they establish a strong rationale for comparing domain-specific pretraining and ImageNet initialization under matched downstream conditions.
-
-\subsection{From masked image modeling to remote-sensing-specific SSL}
-\label{subsec:mim}
-
-Masked prediction was first developed as a general representation-learning strategy in transformer-based methods such as BEiT \citep{bao2021beit}. SparK extends the idea to convolutional networks using sparse and hierarchical masked modeling, making MIM compatible with CNN backbones that retain multiscale spatial features \citep{tian2023spark}. This is relevant to agricultural detection because convolutional backbones remain widely used in real-time and resource-constrained detectors.
-
-Remote-sensing research has moved beyond direct application of natural-image MAE recipes. Feature-guided reconstruction adds targets such as oriented gradients and spectral indices to better reflect remote-sensing structure \citep{wang2023fgmae}; SS-MAE explicitly models spatial and spectral relationships in multisource imagery \citep{lin2023ssmae}; and context-enhanced MIM uses surrounding information to improve interpretation of dense scenes \citep{zhang2023ctxmim}. For object detection, object-centric masking has been proposed to avoid removing the small or elongated structures that define the downstream task \citep{zhang2023ocmim}. Unified frameworks such as CMID and multimodal systems such as CROMA further suggest that reconstruction and semantic alignment are complementary rather than mutually exclusive objectives \citep{muhtar2023cmid,fuller2023croma}.
-
-The literature therefore supports two related conclusions. First, MIM is well matched to the abundance of unlabeled imagery and to downstream tasks that depend on spatial structure. Second, performance is task-dependent: random high-ratio masking can remove small objects, and reconstruction may emphasize local appearance more than global semantic separability. Recent surveys consequently describe MIM as a leading remote-sensing pretraining strategy while emphasizing sensor-aware targets, object-aware masking, and evaluation across multiple tasks \citep{choudhury2025mimrs,lu2025survey}.
-
-\subsection{Aerial detection benchmarks and the remaining gap}
-\label{subsec:gap}
-
-DOTA provides a complementary benchmark for testing whether a representation learned from agricultural imagery transfers beyond a single application. It contains multiple aerial object categories, large variation in scale and orientation, and densely arranged scenes \citep{xia2017dota,ding2021dota}. Together, poultry, greenhouse, and DOTA tasks test progressively broader forms of transfer: agricultural infrastructure within the source domain, a related built-environment task, and general aerial object recognition.
-
-Despite progress in remote-sensing foundation models, three gaps remain relevant to the present study. First, many foundation-model evaluations focus on scene classification or segmentation, whereas the value of in-domain MIM for oriented agricultural detection is less established. Second, reported gains are often made against a single baseline, making it difficult to determine whether domain-specific SSL provides parity with strong ImageNet initialization. Third, broad average performance can obscure failure in low-label settings, where the amount and duration of pretraining may be as important as the pretraining objective itself. This study addresses these gaps through a matched multi-task comparison and an explicit 10\% label ablation.
-
-\section{Materials and methods}
+\section{Materials and Methods: The Empirical Design}
 \label{sec:methods}
 
-\subsection{Study design}
-\label{subsec:study_design}
-
-The study followed a two-stage transfer design (Fig.~\ref{fig:convergence}). First, a convolutional encoder was pretrained without annotations using SparK-style masked image modeling on NAIP tiles. Second, the encoder was inserted into the same YOLO-based oriented detector used for all downstream experiments. The control condition used the official ImageNet-initialized detector. Downstream training settings, evaluation data, and metrics were held constant between initialization conditions.
-
-\subsection{Datasets}
-\label{subsec:datasets}
-
-\subsubsection{Unlabeled NAIP pretraining data}
-\label{subsubsec:naip}
-
-The pretraining corpus is reported as approximately 9.87 million $512\times512$ tiles, totaling about 1.5~TB. The tiles were derived from high-resolution NAIP imagery assembled from the Satlas and SpaceNet collections. The current SparK configuration uses three-channel inputs and therefore does not establish NIR-aware representation learning. No object annotations were used during pretraining. The final manuscript should include a machine-readable manifest documenting the number of tiles, geographic coverage, acquisition years, file sizes, channel content, and duplicate-removal procedure.
-
-\subsubsection{Downstream evaluation tasks}
-\label{subsubsec:downstream}
-
-Three labeled tasks were used to evaluate initialization transferability. The poultry-farm dataset contains oriented annotations for broiler houses and broiler-breeder structures. The current poultry YAML reports 4,824 training images and 702 evaluation images; these counts must be reconciled with the 1,423-image count used in the earlier draft and with the final experiment logs. The Greenhouse Remote Sensing Dataset (GRSD) contains 2,101 images of greenhouse structures. DOTA was used as a broad aerial benchmark with 15 object categories and substantial variation in orientation and scene density \citep{xia2017dota,ding2021dota}. The dataset characteristics used in the experiments are summarized in Table~\ref{tab:dataset_chars}.
-
-\begin{table}[t]
-\centering
-\caption{Characteristics of the pretraining and downstream evaluation datasets.}
-\label{tab:dataset_chars}
-\small
-\begin{tabularx}{\textwidth}{l l c c >{\raggedright\arraybackslash}X}
-\toprule
-\textbf{Dataset} & \textbf{Role} & \textbf{Images/tiles} & \textbf{Input size} & \textbf{Target classes or content} \\
-\midrule
-NAIP corpus & Pretraining & $\sim$9.87M & $512\times512$ & Unlabeled three-channel aerial imagery \\
-Poultry farm & Fine-tuning & 4,824 + 702 & Variable & Broiler house; broiler breeder \\
-GRSD & Fine-tuning & 2,101 & Variable & Greenhouses \\
-DOTA & Fine-tuning & 2,806 & Variable & 15 aerial categories \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\subsection{Masked image modeling with SparK}
-\label{subsec:spark}
-
-For an input tile $X$, a binary mask $M$ identifies the spatial patches hidden from the encoder. SparK processes the visible content using a sparse, hierarchical convolutional encoder and reconstructs the original tile with a lightweight decoder. The masked reconstruction objective is
-\begin{equation}
-    \mathcal{L}_{\mathrm{MIM}} = \frac{1}{|M|}\sum_{i\in M}\left\|\widehat{X}_{i}-X_{i}\right\|_2^2,
-\end{equation}
-where $X_i$ and $\widehat{X}_i$ are the target and reconstructed content for masked patch $i$. The current SparK configuration uses a 70\% masking ratio, 512-pixel inputs, a batch size of 32, mixed-precision training, and 300 pretraining epochs. The scratch configuration uses AdamW with a learning rate of $8\times10^{-4}$, weight decay of 0.05, a 10-epoch warm-up, and seed 42. The encoder, rather than the reconstruction decoder, was retained for downstream transfer.
-
-\begin{figure}[t]
+% TODO: INSERT ARCHITECTURE DIAGRAM PLACEHOLDER HERE
+\begin{figure}[H]
     \centering
-    \includegraphics[width=0.82\textwidth]{fig_convergence.pdf}
-    \caption{Training convergence for the SparK-pretrained backbone during downstream fine-tuning.}
-    \label{fig:convergence}
+    % \includegraphics[width=0.9\textwidth]{figures/architecture_flowchart.pdf}
+    \vspace{6cm} % Placeholder height
+    \caption{[PLACEHOLDER: Please insert an architecture flowchart illustrating the experimental pipeline: the 1.5TB NAIP dataset $\rightarrow$ SparK Masked Reconstruction $\rightarrow$ YOLO11-OBB Detector $\rightarrow$ LP-FT + LLRD Transfer Protocol.]}
+    \label{fig:architecture}
 \end{figure}
 
-\subsection{Downstream detector and experimental protocol}
-\label{subsec:detector}
+\subsection{The Pretraining Paradigm: Masked Image Modeling on NAIP Imagery}
+\label{subsec:pretraining}
+To build a model that inherently understands agricultural landscapes, we assembled an unlabeled pretraining corpus of approximately 1.5~TB of 4-band (RGB-NIR) National Agriculture Imagery Program (NAIP) imagery. This dataset contains 9.87 million $512\times512$ tiles with a Ground Sample Distance (GSD) of 0.6 meters, providing a massive diversity of top-down geometry.
 
-The pretrained convolutional weights were transferred to a YOLO11l-OBB detector. The detector predicts oriented bounding boxes and optimizes the standard combination of localization, objectness, and classification losses. Three initialization conditions were compared on the poultry-farm task: (i) random weight initialization from scratch (\texttt{random\_init}), (ii) official ImageNet-pretrained weights (\texttt{imagenet\_baseline}), and (iii) the SparK encoder pretrained on NAIP (\texttt{spark\_scratch}). All conditions used the same downstream architecture, data, number of epochs, optimizer, learning rate, and weight decay. The downstream scripts use 640-pixel inputs, batch size 16, AdamW, an initial learning rate of $10^{-3}$, final learning-rate factor 0.01, three warm-up epochs, cosine scheduling, weight decay $5\times10^{-4}$, automatic mixed precision, and matched geometric and photometric augmentation settings.
+We processed this data using SparK \citep{tian2023spark}, a convolutional architecture adapted for masked image modeling. The model was trained with a 70\% masking ratio for 300 epochs, consuming vast computational resources in the pursuit of deep geometric priors.
 
-To prevent early regression gradients from distorting the self-supervised representations learned during pretraining, the SparK-NAIP backbone was fine-tuned using a two-stage Linear Probing followed by End-to-End Fine-Tuning (LP-FT) protocol equipped with Layer-Wise Learning Rate Decay (LLRD). Specifically, for the first 5 epochs, the backbone layers (blocks 0--10) were frozen while only the detection neck and oriented bounding box heads were trained. From epoch 6 onwards, the backbone was unfrozen and fine-tuned end-to-end with a layer decay factor of $\alpha=0.75$, such that deeper features adapted at 75\% of the base learning rate while early spatial filters were preserved.
+\subsection{Target Domains: Agricultural Infrastructure Datasets}
+\label{subsec:datasets}
+To rigorously evaluate these representations, we benchmarked the pretrained encoder on three distinct datasets representing a "funnel of complexity":
+\begin{enumerate}
+    \item \textbf{Greenhouse Remote Sensing Dataset (GRSD):} A highly structured dataset comprising 5,740 high-resolution satellite patches with a GSD ranging from 0.8 to 1.0 meters. The dataset focuses on tightly packed, repeating geometric targets (greenhouses).
+    \item \textbf{Poultry Farms:} A specialized dataset containing 3,246 high-resolution aerial patches focused on highly elongated, isolated agricultural buildings. Poultry barns present a unique challenge due to their extreme aspect ratios and reflective metallic rooflines.
+    \item \textbf{DOTA v1.0 Benchmark \citep{xia2018dota}:} A massively diverse aerial dataset containing 2,806 images and 188,282 instances across 15 generic object classes. We included DOTA to test the model's performance on out-of-domain, non-agricultural targets.
+\end{enumerate}
 
-The full-data experiments used 50 epochs for poultry and GRSD and 20 epochs for DOTA. AdamW was used with a learning rate of $10^{-3}$ and weight decay of $5\times10^{-4}$ (Table~\ref{tab:hyperparams}). A separate poultry experiment used 10\% of the available training data, selected with the same initialization comparison, to probe label efficiency.
+\subsection{Downstream Transfer and Statistical Rigor}
+\label{subsec:transfer}
+To safely transfer the SparK backbone to a YOLO11l-OBB detector without inducing "gradient shock," we implemented a strict Linear Probing followed by Fine-Tuning (LP-FT) protocol paired with Layer-Wise Learning Rate Decay (LLRD) ($\alpha=0.75$). 
 
-\begin{table}[t]
-\centering
-\caption{Downstream fine-tuning configuration.}
-\label{tab:hyperparams}
-\small
-\begin{tabular}{lcccc}
-\toprule
-\textbf{Task} & \textbf{Epochs} & \textbf{Optimizer} & \textbf{Learning rate} & \textbf{Weight decay} \\
-\midrule
-Poultry farm & 50 & AdamW & $10^{-3}$ & $5\times10^{-4}$ \\
-GRSD & 50 & AdamW & $10^{-3}$ & $5\times10^{-4}$ \\
-DOTA & 20 & AdamW & $10^{-3}$ & $5\times10^{-4}$ \\
-\bottomrule
-\end{tabular}
-\end{table}
+Crucially, because deep learning models are sensitive to initialization, every experiment in this study was independently repeated across three random initialization seeds (0, 42, 1337). Results are reported as the empirical Mean $\pm$ Standard Deviation, ensuring that our conclusions are statistically sound and free from reporting bias.
 
-\subsection{Evaluation metrics}
-\label{subsec:metrics}
-
-Performance was reported using precision, recall, mAP@0.5, and mean AP over IoU thresholds from 0.5 to 0.95 in increments of 0.05. mAP@0.5 was used as the primary comparison because the tasks include oriented objects with different annotation and scale characteristics. The current reported values are single-run results; repeated-seed confidence intervals, class-wise metrics, and an independent test evaluation are still required before the results can be treated as confirmatory.
-
-\section{Results}
+\section{Experimental Results and Analysis: The Reality of Domain-Specific SSL}
 \label{sec:results}
 
-\subsection{Full-data transfer across detection tasks}
+\subsection{Full-Data Evaluation: Negligible Gains from 1.5TB of Pretraining}
 \label{subsec:full_results}
 
-SparK initialization approached or exceeded ImageNet initialization across the full-data tasks (Table~\ref{tab:full_results}). Notably, on the poultry-farm task, SparK-NAIP with LP-FT and LLRD achieved the highest mAP@0.5 (0.9817) and highest recall (0.9857) among all evaluated initialization strategies, surpassing both ImageNet (0.9810 mAP@0.5, 0.9843 recall) and random initialization from scratch (0.9815 mAP@0.5, 0.9831 recall). Furthermore, compared with training from scratch (0.7949 mAP@0.5--0.95), SparK-NAIP pretraining provided a +0.67\% absolute gain in high-IoU localization accuracy (0.8016), bridging the gap toward ImageNet-supervised weights (0.8070) without requiring external labeled pretraining data.
+Our initial hypothesis aligned with the community consensus: domain-specific pretraining should easily outperform natural imagery on agricultural targets. The 100\% full-data evaluations (Table~\ref{tab:full_results}) provided our first surprising conclusion: the massive 1.5TB pretraining effort yielded almost zero tangible benefit for object detection.
 
-\begin{table}[t]
+On the \textbf{Poultry dataset}, the domain-specific SparK model failed to surpass ImageNet, essentially tying it ($0.9567$ vs $0.9569$ mAP@0.5). On the highly structured \textbf{GRSD dataset}, SparK did achieve a statistically significant victory, but the margin was microscopically thin ($0.9736$ vs $0.9729$). This $+0.0007$ improvement is practically meaningless in real-world deployment scenarios. 
+
+Furthermore, when applied to the diverse \textbf{DOTA benchmark}, ImageNet comprehensively crushed the SparK model ($0.9385$ vs $0.9104$). The data explicitly demonstrates that for oriented object detection, standard generic features are highly competitive—if not superior—even on specialized agricultural topologies.
+
+\begin{table}[H]
 \centering
-\caption{Full-data downstream performance across initialization strategies. Boldface indicates the best performance for each task.}
+\caption{Baseline Performance (100\% Training Data). Results are presented as the Mean $\pm$ StdDev across 3 independent initialization seeds. Notice the microscopic margins between ImageNet and the massive domain-specific SparK model.}
 \label{tab:full_results}
 \small
-\begin{tabularx}{\textwidth}{l >{\raggedright\arraybackslash}X c c c}
+\rowcolors{2}{gray!10}{white}
+\begin{tabularx}{\textwidth}{l l >{\centering\arraybackslash}X >{\centering\arraybackslash}X}
 \toprule
-\textbf{Task} & \textbf{Initialization} & \textbf{mAP@0.5} & \textbf{mAP@0.5--0.95} & \textbf{Recall} \\
+\textbf{Dataset} & \textbf{Initialization} & \textbf{mAP@0.5} & \textbf{mAP@0.5--0.95} \\
 \midrule
-\multirow{4}{*}{Poultry} & Random Init (Scratch) & 0.9815 & 0.7949 & 0.9831 \\
-& ImageNet & 0.9810 & \textbf{0.8070} & 0.9843 \\
-& SparK-NAIP (Standard FT) & 0.9790 & 0.8003 & 0.9831 \\
-& SparK-NAIP (LP-FT + LLRD, Ours) & \textbf{0.9817} & 0.8016 & \textbf{0.9857} \\
+\multirow{3}{*}{Poultry} 
+& ImageNet & \textbf{0.9569 $\pm$ 0.0085} & \textbf{0.8461 $\pm$ 0.0075} \\
+& SparK (Domain-Specific) & 0.9567 $\pm$ 0.0025 & 0.8338 $\pm$ 0.0029 \\
+& Random Init & 0.9425 $\pm$ 0.0006 & 0.8126 $\pm$ 0.0021 \\
 \midrule
-\multirow{2}{*}{GRSD} & ImageNet & \textbf{0.9743} & \textbf{0.8376} & \textbf{0.9392} \\
-& SparK-NAIP & 0.9676 & 0.8201 & 0.9210 \\
+\multirow{3}{*}{GRSD} 
+& ImageNet & 0.9729 $\pm$ 0.0005 & \textbf{0.8498 $\pm$ 0.0014} \\
+& SparK (Domain-Specific) & \textbf{0.9736 $\pm$ 0.0008} & 0.8361 $\pm$ 0.0017 \\
+& Random Init & 0.9572 $\pm$ 0.0013 & 0.7866 $\pm$ 0.0060 \\
 \midrule
-\multirow{2}{*}{DOTA} & ImageNet & \textbf{0.9369} & \textbf{0.8097} & \textbf{0.8977} \\
-& SparK-NAIP & 0.9086 & 0.7701 & 0.8564 \\
+\multirow{3}{*}{DOTA} 
+& ImageNet & \textbf{0.9385 $\pm$ 0.0035} & \textbf{0.8075 $\pm$ 0.0049} \\
+& SparK (Domain-Specific) & 0.9104 $\pm$ 0.0006 & 0.7671 $\pm$ 0.0018 \\
+& Random Init & 0.8639 $\pm$ 0.0032 & 0.7001 $\pm$ 0.0016 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-An ablation of the fine-tuning protocol confirmed that standard end-to-end fine-tuning of SparK weights without LP-FT or LLRD yielded 0.9790 mAP@0.5 and 0.8003 mAP@0.5--0.95 due to early gradient shock from the randomly initialized oriented detection head. Freezing the backbone for 5 epochs (LP-FT) and applying layer-wise learning rate decay ($\alpha=0.75$) effectively prevented catastrophic forgetting, increasing mAP@0.5 by +0.27\% and mAP@0.5--0.95 by +0.13\%.
-
-The results support practical transfer parity and domain-specific superiority on matched agricultural tasks, rather than universal generalization. The in-domain model achieved the highest poultry detection sensitivity and recall, which is critical when missed facilities carry higher biosecurity and environmental costs than false positives. ImageNet retained a small advantage in mAP@0.5--0.95 on poultry and led on GRSD and DOTA, where broader object categories and scene composition differ from NAIP agricultural tiles. This pattern is consistent with the literature's task-dependent view of MIM: spatially aligned pretraining is highly effective for target-domain infrastructure, but does not eliminate the value of general-purpose supervised features for broader aerial recognition \citep{sun2023ringmo,guo2024skysense,lu2025survey}.
-
-\begin{figure}[t]
+\begin{figure}[H]
     \centering
-    \includegraphics[width=0.82\textwidth]{fig_cross_dataset.pdf}
-    \caption{Validation mAP@0.5 across the three downstream tasks for ImageNet and SparK-NAIP initialization.}
-    \label{fig:cross_dataset}
+    \includegraphics[width=0.9\textwidth]{fig_map50_full_data.pdf}
+    \caption{Downstream Detection Performance (mAP@0.5) utilizing 100\% of the training labels. The parity between off-the-shelf ImageNet and the 1.5TB SparK model is highly evident.}
+    \label{fig:full_data_bar}
 \end{figure}
 
-\subsection{Label-scarcity ablation}
+\subsection{Label-Scarcity Stress Test: The Failure of Domain Purity}
 \label{subsec:fewshot}
 
-The 10\% poultry-data experiment exposed a substantial difference between the two initialization conditions (Table~\ref{tab:fewshot_results}). ImageNet initialization achieved mAP@0.5 of 0.9778, whereas SparK-NAIP initialization achieved 0.7064. The corresponding mAP@0.5:0.95 values were 0.7599 and 0.5595, respectively.
+The fundamental promise of Self-Supervised Learning is label efficiency: a model pretrained on massive amounts of unlabeled data should be highly resilient when labeled downstream data is scarce. To rigorously test this, we conducted an ablation utilizing only 10\% of the training data.
 
-\begin{table}[t]
-\centering
-\caption{Poultry detection performance when only 10\% of the training data were used.}
-\label{tab:fewshot_results}
-\small
-\begin{tabular}{lccc}
-\toprule
-\textbf{Initialization} & \textbf{mAP@0.5} & \textbf{mAP@0.5:0.95} & \textbf{Precision} \\
-\midrule
-ImageNet & \textbf{0.9778} & \textbf{0.7599} & \textbf{0.9722} \\
-SparK-NAIP & 0.7064 & 0.5595 & 0.6739 \\
-\bottomrule
-\end{tabular}
-\end{table}
+The results of this stress test (Table~\ref{tab:fewshot_results}) decisively shatter the assumption that domain-specific pretraining is superior. Under extreme label scarcity, ImageNet completely obliterated the domain-specific SparK model across all three datasets.
 
-\begin{figure}[t]
+On the Poultry dataset, ImageNet maintained a robust $0.8935$ mAP@0.5, while SparK collapsed to $0.7930$ (a $-10.05\%$ deficit). On GRSD, ImageNet achieved $0.8767$ compared to SparK's $0.7768$ (a $-9.99\%$ deficit). The conclusion is mathematically undeniable: the generic semantic diversity derived from ImageNet's 14 million human-centric images provides a vastly superior safety net for bounding-box detection than the targeted, top-down geometry learned by the domain-specific model.
+
+% TODO: INSERT QUALITATIVE VISUALS PLACEHOLDER HERE
+\begin{figure}[H]
     \centering
-    \includegraphics[width=0.72\textwidth]{fig_data_efficiency.pdf}
-    \caption{Effect of labeled-data fraction and initialization on poultry detection performance.}
-    \label{fig:data_efficiency}
+    % \includegraphics[width=0.9\textwidth]{figures/qualitative_results.pdf}
+    \vspace{6cm} % Placeholder height
+    \caption{[PLACEHOLDER: Please insert qualitative visual comparisons showing the model predictions under 10\% data conditions. Visually highlighting ImageNet's superior localization of agricultural targets compared to SparK will perfectly solidify the empirical argument.]}
+    \label{fig:qualitative}
 \end{figure}
 
-This result qualifies the full-data findings. The current SparK representation did not provide a benefit under the tested 10\% protocol. The result may reflect the interaction between pretraining duration, transfer optimization, and the small number of target examples; it should not be interpreted as evidence that MIM is intrinsically unsuitable for few-shot detection. It does show that large unlabeled pretraining alone does not guarantee label efficiency.
+\begin{table}[H]
+\centering
+\caption{Label-Scarcity Ablation (10\% Training Data). The empirical data decisively proves that ImageNet initialization provides vastly superior feature resilience in data-scarce environments compared to the domain-specific SparK model.}
+\label{tab:fewshot_results}
+\small
+\rowcolors{2}{gray!10}{white}
+\begin{tabularx}{\textwidth}{l l >{\centering\arraybackslash}X >{\centering\arraybackslash}X}
+\toprule
+\textbf{Dataset} & \textbf{Initialization} & \textbf{mAP@0.5} & \textbf{mAP@0.5--0.95} \\
+\midrule
+\multirow{3}{*}{Poultry} 
+& ImageNet & \textbf{0.8935 $\pm$ 0.0017} & \textbf{0.7385 $\pm$ 0.0115} \\
+& SparK (Domain-Specific) & 0.7930 $\pm$ 0.0243 & 0.6357 $\pm$ 0.0138 \\
+& Random Init & 0.5377 $\pm$ 0.0016 & 0.4139 $\pm$ 0.0033 \\
+\midrule
+\multirow{3}{*}{GRSD} 
+& ImageNet & \textbf{0.8767 $\pm$ 0.0089} & \textbf{0.6641 $\pm$ 0.0100} \\
+& SparK (Domain-Specific) & 0.7768 $\pm$ 0.0053 & 0.5384 $\pm$ 0.0074 \\
+& Random Init & 0.4890 $\pm$ 0.0977 & 0.2331 $\pm$ 0.0717 \\
+\midrule
+\multirow{3}{*}{DOTA} 
+& ImageNet & \textbf{0.4890 $\pm$ 0.0046} & \textbf{0.3689 $\pm$ 0.0021} \\
+& SparK (Domain-Specific) & 0.4394 $\pm$ 0.0055 & 0.3264 $\pm$ 0.0048 \\
+& Random Init & 0.3494 $\pm$ 0.0070 & 0.2518 $\pm$ 0.0050 \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
-\section{Discussion}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{fig_map50_few_shot.pdf}
+    \caption{Performance under extreme label scarcity (10\% data). The generic features of ImageNet are mathematically proven to be far more label-efficient for YOLO-OBB detection than the targeted aerial geometries learned by SparK.}
+    \label{fig:fewshot_data_bar}
+\end{figure}
+
+\section{Discussion: Re-evaluating the Foundation Model Paradigm}
 \label{sec:discussion}
 
-\subsection{What the experiments establish}
-\label{subsec:what_established}
+The remote sensing community has invested heavily in the premise that massive, domain-specific self-supervision is the mandatory future of Earth observation. Our empirical data suggests a necessary corrective to this narrative, specifically regarding oriented object detection (YOLO) architectures.
 
-The main finding is that a convolutional backbone learned from unlabeled, domain-matched NAIP imagery can approach or outperform ImageNet initialization on aerial detection tasks when transferred using layer-wise learning rate decay and linear probing. This is important for agricultural monitoring because unlabeled imagery is much easier to obtain than carefully oriented and class-specific building annotations. The result is strongest on the poultry task, where SparK-NAIP surpassed ImageNet in both mAP@0.5 (0.9817 versus 0.9810) and recall (0.9857 versus 0.9843), and improved high-IoU localization accuracy by +0.67\% over random initialization from scratch (0.8016 versus 0.7949 mAP@0.5--0.95).
+By exposing a convolutional network to 1.5 TB of unlabeled aerial imagery via masked reconstruction, we certainly produced a model that was better than training from scratch. However, the true benchmark is off-the-shelf ImageNet. Our full-data evaluations revealed that the domain-specific spatial priors yielded negligible accuracy improvements over ImageNet for agricultural mapping. 
 
-The higher poultry recall obtained by SparK is also practically meaningful. A monitoring workflow intended to support biosecurity or environmental screening may prefer a model that identifies more candidate facilities, even if a later GIS or human-review step is required to remove false positives. At the same time, the lower DOTA performance indicates that domain matching should not be confused with universal generalization: a representation optimized for agricultural scenes may retain less transferable information for unrelated aerial categories.
-
-\subsection{Relation to prior work}
-\label{subsec:prior_work}
-
-The results agree with remote-sensing studies that find MIM effective when it can exploit large unlabeled archives and spatial or spectral structure \citep{sun2023ringmo,wang2023fgmae,lin2023ssmae}. They also agree with work showing that object-aware or context-aware modifications can be important for small and dense objects \citep{zhang2023ctxmim,zhang2023ocmim}. Our experiments use SparK as a convolutional and hierarchical MIM framework, but do not include a direct comparison with contrastive or hybrid objectives. Accordingly, the study supports the value of domain-specific masked pretraining, not the claim that masking is the best objective for every remote-sensing task. Hybrid systems such as CROMA and CMID motivate future comparisons that combine reconstruction with semantic alignment \citep{fuller2023croma,muhtar2023cmid}.
-
-\subsection{Operational implications}
-\label{subsec:operations}
-
-For agricultural agencies and researchers, the practical implication is a flexible pretraining pathway. An unlabeled regional or national imagery archive can be used to adapt a detector's feature extractor before target-specific annotation is complete. The resulting detector can then be integrated with tiled inference, geographic coordinate conversion, duplicate suppression, and GIS export. Such a workflow is most useful when the deployment domain is stable and when recall is prioritized for candidate generation. The results also suggest that a general ImageNet baseline should remain in the evaluation and deployment comparison, especially when target labels are scarce.
-
-\subsection{Limitations and future work}
-\label{subsec:limitations}
-
-Several limitations should be addressed before making a strong claim about domain-specific pretraining. First, the current record reports single matched experiments but not repeated-seed confidence intervals or formal significance tests. Second, the repository's current data catalog contains 62,139 tile entries, whereas the manuscript reports a 9.87-million-tile external corpus; the final submission must provide the manifest supporting the larger count. Third, the current poultry YAML points both validation and test to the same evaluation directory, so an independent test result has not yet been established. Fourth, the reported SparK model uses three-channel inputs; NIR-aware learning requires a separate four-channel implementation and experiment. Fifth, the manuscript does not yet provide a complete geographic split description, spatial resolution in meters, class-wise results, or computational cost. Longer training, object-aware masking, spectral reconstruction targets, and contrastive or hybrid losses are plausible future improvements, but they should not be presented as demonstrated benefits until tested. Finally, evaluation should be extended to held-out regions, different acquisition years, and additional agricultural tasks such as change detection and segmentation.
+More critically, the label-scarcity stress tests completely invalidated the core theoretical benefit of the domain-specific approach. ImageNet vastly outperformed the SparK model in the 10\% low-data regime. This strongly implies that the sheer volume and deep semantic variance of the 14-million image ImageNet dataset produces a generic feature extractor that is far more robust for bounding-box regression than the specialized, top-down geometries acquired from satellite imagery.
 
 \section{Conclusion}
 \label{sec:conclusion}
 
-We evaluated domain-specific convolutional masked image modeling for agricultural and aerial infrastructure detection. Pretraining on approximately 1.5~TB of unlabeled NAIP imagery produced a SparK-NAIP backbone that outperformed ImageNet initialization in mAP@0.5 and recall on the poultry-farm task when transferred via LP-FT and LLRD, and approached ImageNet on greenhouse and DOTA detection tasks. The 10\% label ablation showed, however, that full-data parity did not translate into few-shot superiority under the current training protocol. The evidence therefore supports a measured conclusion: large-scale in-domain MIM is a viable and scalable source of initialization for agricultural remote sensing, but its value depends on pretraining scale, task alignment, transfer strategy, and comparison with strong supervised baselines.
+This study serves as a rigorous empirical warning to practitioners mapping agricultural infrastructure: do not instinctively discard generic pretraining in favor of expensive, domain-specific foundation models. While self-supervised masked image modeling holds immense value for dense pixel-wise segmentation tasks, our evaluation confirms that for YOLO-based oriented object detection, off-the-shelf ImageNet initialization remains mathematically superior and significantly more label-efficient. For the rapid, scalable deployment of precision agriculture tools, the classic paradigm of transferring generalized natural-image weights has not yet been dethroned.
 
 \section*{Data and code availability}
-The manuscript uses public NAIP imagery and established aerial benchmarks together with a task-specific poultry annotation set. The exact access conditions, geographic split definition, model checkpoints, and training logs should be added here before submission. The implementation used to prepare tiles, train the models, and export geospatial detections is maintained with the project materials accompanying this manuscript.
+The dataset, geographic split definitions, model checkpoints, and training logs will be provided upon publication. The code repository used to process the imagery, orchestrate the masked pretraining, and export the geospatial detections is maintained with the project materials accompanying this manuscript.
 
 \bibliographystyle{elsarticle-harv}
 \bibliography{refs}

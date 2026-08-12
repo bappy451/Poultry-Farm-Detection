@@ -29,7 +29,7 @@ num_local_crops: 8         # Number of local crops per tile
 # 4. TRAINING & HYPERPARAMETERS
 # ==========================================
 batch_size: 32             # Optimal for RTX 4090 24GB VRAM in BF16 (320 crops/step)
-epochs: 20                 # Total pre-training epochs
+epochs: 400                # Total pre-training epochs
 epoch_size: 2500           # Number of batches per epoch (2500 batches * 32 = 80,000 images/epoch, ~12 min on RTX 4090)
 precision: "bf16"          # Mixed precision: bf16 (Ada Lovelace Tensor Cores) or fp16 / fp32
 learning_rate: 0.0005      # AdamW peak learning rate

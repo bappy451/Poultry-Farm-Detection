@@ -1,0 +1,46 @@
+# dino_vit_downstream_compare.yaml
+# ==================================
+# Configuration for comparing three initialization strategies on ViT-Base/16:
+#   1. dino_pretrained   — Self-supervised DINO checkpoint from ongoing training
+#   2. imagenet_baseline — Official ImageNet supervised weights
+#   3. random_init       — Random weight initialization from scratch (ablation)
+#
+# Evaluated sequentially across 3 target remote-sensing datasets (9 Experiments total):
+#   1. Poultry House Detection (poultry_houses) — Primary target dataset
+#   2. GRSD Greenhouse Detection (grsd_greenhouse)
+#   3. DOTA Aerial Detection (dota_aerial)
+
+paths:
+  dino_checkpoint_dir: "runs/dino_pretrain"
+  output_dir: "runs/dino_vit_compare"
+
+training:
+  epochs: 20
+  imgsz: 640
+  batch: 16             # Micro-batch size per step (fits cleanly in 24GB GPU)
+  accum_steps: 4       # Gradient accumulation steps (4 * 4 = 16 effective batch size)
+  lr: 0.0001
+  weight_decay: 0.0001
+  num_workers: 8
+  device: "cuda"
+
+datasets:
+  - name: "poultry_houses"
+    yaml: "configs/poultry_obb.yaml"
+  - name: "grsd_greenhouse"
+    yaml: "configs/grsd_obb.yaml"
+  - name: "dota_aerial"
+    yaml: "configs/dota_obb.yaml"
+
+models:
+  - name: "standard_mae"
+    init_strategy: "mae"
+    pretrained_weights: "trained_models/baselines/standard_mae_vit_base.pt"
+    description: "ViT-Base/16 initialized with Standard MAE reconstructive weights"
+  - name: "satmae"
+    init_strategy: "satmae"
+    pretrained_weights: "trained_models/baselines/satmae_vit_base.pt"
+    description: "ViT-Base/16 initialized with SatMAE domain-specific weights"
+  - name: "random_init"
+    init_strategy: "random"
+    description: "ViT-Base/16 initialized from scratch with random weights"

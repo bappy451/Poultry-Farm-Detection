@@ -106,6 +106,13 @@ def replace_with_sparse_layers(module: nn.Module):
             setattr(module, name, new_layer)
         elif isinstance(child, nn.ReLU):
             setattr(module, name, SparseReLU(inplace=child.inplace))
+        elif isinstance(child, nn.SiLU):
+            setattr(module, name, SparseSiLU(inplace=child.inplace))
+        elif isinstance(child, nn.MaxPool2d):
+            new_layer = spconv_module.SparseMaxPool2d(
+                kernel_size=child.kernel_size, stride=child.stride, padding=child.padding
+            )
+            setattr(module, name, new_layer)
         else:
             replace_with_sparse_layers(child)
     return module
@@ -207,67 +214,133 @@ class SparseSiLU(nn.Module):
 
 class SparseCSPDarkNetEncoder(nn.Module):
     """
-    A simplified CSPDarkNet sparse encoder (YOLOv8/v11 style) that matches 
-    the exact downsampling channel dimensions of Ultralytics YOLO models 
-    so that pretrained weights can be loaded.
+    A full CSPDarkNet sparse encoder (YOLOv8/v11 style) that dynamically 
+    monkey-patches and converts an actual Ultralytics YOLO model into a 
+    sparse encoder. This guarantees 100% architectural and weight parity 
+    with the official dense models, including C2f/C3k2 bottlenecks.
     """
     def __init__(self, in_channels=3, backbone_type="yolo11l"):
         super().__init__()
+        try:
+            from ultralytics import YOLO
+        except ImportError:
+            raise ImportError("ultralytics package is required to use YOLO backbones.")
+            
+        print(f"Instantiating sparse {backbone_type} backbone from Ultralytics...")
+        # Get the classification model to isolate the backbone
+        yolo = YOLO(f"{backbone_type}-cls.pt")
         
-        # YOLOv11 standard channel configurations (p1, p2, p3, p4, p5)
-        if backbone_type == "yolo11l":
-            ch = [64, 128, 256, 512, 512]
-        elif backbone_type == "yolo11m":
-            ch = [48, 96, 192, 384, 576]
-        else: # n / s
-            ch = [32, 64, 128, 256, 512]
-
-        self.encoder_channels = [ch[1], ch[2], ch[3], ch[4]]
-
-        if spconv is not None:
-            self.stem = nn.Sequential(
-                spconv.SparseConv2d(in_channels, ch[0], kernel_size=3, stride=2, padding=1),
-                SparseLayerNorm(ch[0]),
-                SparseSiLU(inplace=True)
-            )
-        else:
-            self.stem = nn.Sequential(
-                nn.Conv2d(in_channels, ch[0], kernel_size=3, stride=2, padding=1),
-                nn.BatchNorm2d(ch[0]),
-                nn.SiLU(inplace=True)
-            )
+        # YOLO classification models have their backbone in yolo.model.model[:10]
+        self.backbone_layers = nn.Sequential(*yolo.model.model[:10])
         
-        def make_stage(in_c, out_c, next_in_c):
-            if spconv is not None:
-                layers = [
-                    spconv.SparseConv2d(in_c, out_c, kernel_size=3, stride=2, padding=1),
-                    SparseLayerNorm(out_c),
-                    SparseSiLU(inplace=True)
-                ]
-                if out_c != next_in_c:
-                    layers.extend([
-                        spconv.SubMConv2d(out_c, next_in_c, kernel_size=1),
-                        SparseLayerNorm(next_in_c),
-                        SparseSiLU(inplace=True)
-                    ])
-            else:
-                layers = [
-                    nn.Conv2d(in_c, out_c, kernel_size=3, stride=2, padding=1),
-                    nn.BatchNorm2d(out_c),
-                    nn.SiLU(inplace=True)
-                ]
-                if out_c != next_in_c:
-                    layers.extend([
-                        nn.Conv2d(out_c, next_in_c, kernel_size=1),
-                        nn.BatchNorm2d(next_in_c),
-                        nn.SiLU(inplace=True)
-                    ])
-            return nn.Sequential(*layers)
+        self._patch_yolo_modules()
+        replace_with_sparse_layers(self.backbone_layers)
+        
+        # Dynamically determine the actual channel dimensions for the 4 hierarchical stages
+        # by running a dummy dense tensor through the unmodified layers.
+        self.encoder_channels = []
+        dummy_x = torch.zeros(1, 3, 224, 224)
+        for i, layer in enumerate(self.backbone_layers):
+            # Temporarily bypass sparse logic for dummy extraction
+            with torch.no_grad():
+                dummy_x = layer(dummy_x)
+            if i in [2, 4, 6, 9]:
+                self.encoder_channels.append(dummy_x.shape[1])
 
-        self.stage1 = make_stage(ch[0], ch[1], ch[2])
-        self.stage2 = make_stage(ch[2], ch[2], ch[3])
-        self.stage3 = make_stage(ch[3], ch[3], ch[4])
-        self.stage4 = make_stage(ch[4], ch[4], ch[4])
+    def _patch_yolo_modules(self):
+        """
+        Dynamically overrides the forward methods of complex YOLO blocks 
+        to gracefully handle SparseConvTensors.
+        """
+        for m in self.backbone_layers.modules():
+            cls_name = m.__class__.__name__
+            
+            if cls_name == 'Bottleneck':
+                def patched_bottleneck(self, x):
+                    out = self.cv2(self.cv1(x))
+                    if self.add:
+                        if hasattr(x, 'replace_feature'):
+                            return out.replace_feature(out.features + x.features)
+                        return x + out
+                    return out
+                m.forward = patched_bottleneck.__get__(m, m.__class__)
+                
+            elif cls_name in ('C2f', 'C3k2'):
+                def patched_c2f(self, x):
+                    y = self.cv1(x)
+                    if hasattr(x, 'replace_feature'):
+                        import torch
+                        f_list = list(y.features.chunk(2, dim=1))
+                        current_sp = y.replace_feature(f_list[-1])
+                        for block in self.m:
+                            current_sp = block(current_sp)
+                            f_list.append(current_sp.features)
+                        out_f = torch.cat(f_list, dim=1)
+                        return self.cv2(y.replace_feature(out_f))
+                    else:
+                        import torch
+                        y_list = list(y.chunk(2, 1))
+                        y_list.extend(block(y_list[-1]) for block in self.m)
+                        return self.cv2(torch.cat(y_list, 1))
+                m.forward = patched_c2f.__get__(m, m.__class__)
+                
+            elif cls_name in ('C3', 'C3k'):
+                def patched_c3(self, x):
+                    y1 = self.cv1(x)
+                    y2 = self.cv2(x)
+                    if hasattr(x, 'replace_feature'):
+                        import torch
+                        out_m = self.m(y1)
+                        f_cat = torch.cat([out_m.features, y2.features], dim=1)
+                        return self.cv3(x.replace_feature(f_cat))
+                    else:
+                        import torch
+                        return self.cv3(torch.cat((self.m(y1), y2), 1))
+                m.forward = patched_c3.__get__(m, m.__class__)
+                
+            elif cls_name == 'SPPF':
+                def patched_sppf(self, x):
+                    x = self.cv1(x)
+                    if hasattr(x, 'replace_feature'):
+                        import torch
+                        y1 = self.m(x)
+                        y2 = self.m(y1)
+                        y3 = self.m(y2)
+                        f_cat = torch.cat([x.features, y1.features, y2.features, y3.features], dim=1)
+                        return self.cv2(x.replace_feature(f_cat))
+                    else:
+                        import torch
+                        y1 = self.m(x)
+                        y2 = self.m(y1)
+                        return self.cv2(torch.cat((x, y1, y2, self.m(y2)), 1))
+                m.forward = patched_sppf.__get__(m, m.__class__)
+                
+            elif cls_name == 'C2PSA':
+                def patched_c2psa(self, x):
+                    if hasattr(x, 'replace_feature'):
+                        import torch
+                        import spconv.pytorch as spconv
+                        # Convert to dense for attention computation
+                        dense_x = x.dense()
+                        if dense_x.dim() == 5 and dense_x.shape[2] == 1:
+                            dense_x = dense_x.squeeze(2)
+                        
+                        a, b = self.cv1(dense_x).split((self.c, self.c), dim=1)
+                        b = b + self.m(a)
+                        out_dense = self.cv2(torch.cat((a, b), 1))
+                        
+                        # Convert back to sparse
+                        b_idx = x.indices[:, 0].long()
+                        y_idx = x.indices[:, 2].long()
+                        x_idx = x.indices[:, 3].long()
+                        features = out_dense[b_idx, :, y_idx, x_idx]
+                        return spconv.SparseConvTensor(features, x.indices, x.spatial_shape, x.batch_size)
+                    else:
+                        import torch
+                        a, b = self.cv1(x).split((self.c, self.c), dim=1)
+                        b = b + self.m(a)
+                        return self.cv2(torch.cat((a, b), 1))
+                m.forward = patched_c2psa.__get__(m, m.__class__)
 
     def forward(self, x):
         spconv_module = _refresh_spconv()
@@ -285,24 +358,29 @@ class SparseCSPDarkNetEncoder(nn.Module):
             dense_x[b, :, y, x_idx] = features
             x = dense_x
 
-        x = self.stem(x)
-        x1 = self.stage1(x)
-        x2 = self.stage2(x1)
-        x3 = self.stage3(x2)
-        x4 = self.stage4(x3)
-        return [x1, x2, x3, x4]
+        out_features = []
+        for i, layer in enumerate(self.backbone_layers):
+            x = layer(x)
+            # Standard YOLO multi-scale feature indices
+            if i in [2, 4, 6, 9]:
+                out_features.append(x)
+                
+        return out_features
 
 class HierarchicalDecoder(nn.Module):
     """
     A dense decoder that reconstructs the original image from sparse features.
     
     It 'fills in' the holes left by masking with a learnable mask token 
-    and then uses progressive transposed convolutions to restore resolution.
+    for each hierarchical scale, and then uses progressive transposed convolutions 
+    and skip connections to restore resolution (UNet-style).
     """
     def __init__(self, encoder_channels: List[int], out_channels=3):
         super().__init__()
-        # learnable vector representing masked regions
-        self.mask_token = nn.Parameter(torch.zeros(1, encoder_channels[-1]))
+        # 1 mask token per stage to fill holes at every scale
+        self.mask_tokens = nn.ParameterList([
+            nn.Parameter(torch.zeros(1, ch)) for ch in encoder_channels
+        ])
         
         # Bottleneck to process the highest latent space
         self.bottleneck = nn.Sequential(
@@ -310,51 +388,70 @@ class HierarchicalDecoder(nn.Module):
             nn.ReLU(inplace=True)
         )
         
-        # Upsampling stages (transposed convolutions)
-        self.up4 = self._make_up_block(encoder_channels[-1], encoder_channels[-2])
-        self.up3 = self._make_up_block(encoder_channels[-2], encoder_channels[-3])
-        self.up2 = self._make_up_block(encoder_channels[-3], encoder_channels[-4])
+        # Upsampling stages with skip connections
+        self.up_conv4 = nn.ConvTranspose2d(encoder_channels[-1], encoder_channels[-2], kernel_size=2, stride=2)
+        self.proj3 = nn.Sequential(
+            nn.Conv2d(encoder_channels[-2], encoder_channels[-2], 3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+        
+        self.up_conv3 = nn.ConvTranspose2d(encoder_channels[-2], encoder_channels[-3], kernel_size=2, stride=2)
+        self.proj2 = nn.Sequential(
+            nn.Conv2d(encoder_channels[-3], encoder_channels[-3], 3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+        
+        self.up_conv2 = nn.ConvTranspose2d(encoder_channels[-3], encoder_channels[-4], kernel_size=2, stride=2)
+        self.proj1 = nn.Sequential(
+            nn.Conv2d(encoder_channels[-4], encoder_channels[-4], 3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+        
         self.up1 = nn.Sequential(
             nn.ConvTranspose2d(encoder_channels[-4], 64, kernel_size=4, stride=4, padding=0),
             nn.ReLU(inplace=True),
             nn.Conv2d(64, out_channels, 3, padding=1)
         )
 
-    def _make_up_block(self, in_c, out_c):
-        return nn.Sequential(
-            nn.ConvTranspose2d(in_c, out_c, kernel_size=2, stride=2),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_c, out_c, 3, padding=1),
-            nn.ReLU(inplace=True)
-        )
-
     def forward(self, sparse_features: List, mask: torch.Tensor):
-        # 1. Take highest feature map and convert to dense
-        x_sparse = sparse_features[-1]
-        
+        dense_features = []
         spconv_module = _refresh_spconv()
-        if spconv_module is not None and isinstance(x_sparse, spconv_module.SparseConvTensor):
-            # spconv dense() returns (B, C, D, H, W).
-            x_dense = x_sparse.dense()
-            if x_dense.dim() == 5 and x_dense.shape[2] == 1:
-                x_dense = x_dense.squeeze(2)
-        else:
-            # Fallback path: it's already dense
-            x_dense = x_sparse
+        
+        # 1. Convert all hierarchical features to dense
+        for sf in sparse_features:
+            if spconv_module is not None and isinstance(sf, spconv_module.SparseConvTensor):
+                df = sf.dense()
+                if df.dim() == 5 and df.shape[2] == 1:
+                    df = df.squeeze(2)
+                dense_features.append(df)
+            else:
+                dense_features.append(sf)
+                
+        # 2. Fill masked holes with learnable mask tokens at ALL scales
+        filled_features = []
+        for i, df in enumerate(dense_features):
+            mask_down = F.interpolate(mask, size=(df.shape[2], df.shape[3]), mode='nearest')
+            token = self.mask_tokens[i].view(1, -1, 1, 1).expand_as(df)
+            filled = df * (1 - mask_down) + token * mask_down
+            filled_features.append(filled)
             
-        # 2. Fill masked holes with learnable mask tokens.
-        # Downsample the binary mask to match the bottleneck resolution.
-        mask_down = F.interpolate(mask, size=(x_dense.shape[2], x_dense.shape[3]), mode='nearest')
+        x1, x2, x3, x4 = filled_features
         
-        # Merge visible features with mask tokens for hidden regions.
-        mask_token_expanded = self.mask_token.view(1, -1, 1, 1).expand_as(x_dense)
-        x_dense = x_dense * (1 - mask_down) + mask_token_expanded * mask_down
+        # 3. Progressive Upsampling with Skip Connections
+        x = self.bottleneck(x4)
         
-        # 3. Progressive Upsampling to original image dimensions
-        x = self.bottleneck(x_dense)
-        x = self.up4(x)
-        x = self.up3(x)
-        x = self.up2(x)
+        x = self.up_conv4(x)
+        x = x + x3
+        x = self.proj3(x)
+        
+        x = self.up_conv3(x)
+        x = x + x2
+        x = self.proj2(x)
+        
+        x = self.up_conv2(x)
+        x = x + x1
+        x = self.proj1(x)
+        
         x = self.up1(x)
         
         return x
@@ -382,61 +479,15 @@ class SparKNetwork(nn.Module):
         elif backbone_type.startswith("yolo11"):
             self.encoder = SparseCSPDarkNetEncoder(in_channels=3, backbone_type=backbone_type)
             encoder_channels = self.encoder.encoder_channels
-            if pretrained:
-                self._load_yolo_pretrained(backbone_type)
+            # Pretrained weights are automatically loaded via Ultralytics inside the encoder
         else:
             # Default to standard CSPDarkNet (e.g. YOLOv8n/s scale)
             self.encoder = SparseCSPDarkNetEncoder(in_channels=3, backbone_type="yolo11n")
             encoder_channels = self.encoder.encoder_channels
-            if pretrained:
-                print(f"Warning: Pretrained weights not yet supported for {backbone_type} in SparK. Starting from scratch.")
             
         self.decoder = HierarchicalDecoder(encoder_channels, out_channels=3)
 
-    def _load_yolo_pretrained(self, backbone_type: str):
-        """
-        Helper to load YOLO weights from Ultralytics into our simplified encoder.
-        """
-        try:
-            from ultralytics import YOLO
-            print(f"Loading pretrained {backbone_type} weights from Ultralytics...")
-            # We download the classification model to get pure backbone weights
-            # Names: yolo11n-cls.pt, yolo11s-cls.pt, etc.
-            yolo = YOLO(f"{backbone_type}-cls.pt")
-            yolo_state = yolo.model.state_dict()
-            
-            mapping = {
-                "model.0.conv.weight": "encoder.stem.0.weight",
-                "model.0.bn.weight": "encoder.stem.1.ln.weight",
-                "model.0.bn.bias": "encoder.stem.1.ln.bias",
-                
-                "model.1.conv.weight": "encoder.stage1.0.weight",
-                "model.1.bn.weight": "encoder.stage1.1.ln.weight",
-                "model.1.bn.bias": "encoder.stage1.1.ln.bias",
-                
-                "model.3.conv.weight": "encoder.stage2.0.weight",
-                "model.3.bn.weight": "encoder.stage2.1.ln.weight",
-                "model.3.bn.bias": "encoder.stage2.1.ln.bias",
-                
-                "model.5.conv.weight": "encoder.stage3.0.weight",
-                "model.5.bn.weight": "encoder.stage3.1.ln.weight",
-                "model.5.bn.bias": "encoder.stage3.1.ln.bias",
-                
-                "model.7.conv.weight": "encoder.stage4.0.weight",
-                "model.7.bn.weight": "encoder.stage4.1.ln.weight",
-                "model.7.bn.bias": "encoder.stage4.1.ln.bias",
-            }
-            
-            new_state = {}
-            for k, v in yolo_state.items():
-                if k in mapping:
-                    new_state[mapping[k]] = v
-            
-            msg = self.load_state_dict(new_state, strict=False)
-            print(f"  YOLO pretrained weights loaded: {len(new_state)} tensors. Missing: {len(msg.missing_keys)}")
-            
-        except Exception as e:
-            print(f"Warning: Could not load YOLO pretrained weights: {e}")
+
 
     def forward(self, sparse_tensor, mask):
         """

@@ -14,17 +14,20 @@ from poultry_geo.train_spark_ssl import translate_state_dict
 class YoloFormatSegmentationDataset(Dataset):
     def __init__(self, data_yaml_path, split="train", imgsz=640):
         with open(data_yaml_path, 'r') as f:
-            self.data_cfg = yaml.safe_load(f)
+            self.data_cfg = yaml.safe_load(f) or {}
         
-        # Resolve base directory relative to yaml
-        base_dir = Path(data_yaml_path).parent
+        # Resolve base directory relative to yaml 'path' field or yaml file parent
+        if "path" in self.data_cfg and self.data_cfg["path"]:
+            base_dir = Path(self.data_cfg["path"]).expanduser().resolve()
+        else:
+            base_dir = Path(data_yaml_path).parent.resolve()
         
         # YOLO typically defines train: path/to/images. If it's absolute, use it directly.
         split_dir = self.data_cfg.get(split)
         if Path(split_dir).is_absolute():
             self.img_dir = Path(split_dir)
         else:
-            self.img_dir = base_dir / split_dir
+            self.img_dir = (base_dir / split_dir).resolve()
             
         # Labels are typically in a parallel 'labels' directory
         self.lbl_dir = self.img_dir.parent / "labels"
@@ -91,6 +94,11 @@ class YoloFormatSegmentationDataset(Dataset):
         
         # HWC and normalize
         img = img.transpose(2, 0, 1).astype(np.float32) / 255.0
+        
+        # Apply ImageNet normalization (crucial for pretrained models like DINO/ImageNet)
+        mean = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(3, 1, 1)
+        std = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(3, 1, 1)
+        img = (img - mean) / std
         
         return {
             "image": torch.from_numpy(img),

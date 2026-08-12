@@ -619,6 +619,7 @@ def build_parser() -> argparse.ArgumentParser:
     train_spark_parser.add_argument("--patch-size", type=int, default=16)
     train_spark_parser.add_argument("--num-workers", type=int, default=4)
     train_spark_parser.add_argument("--epochs", type=int, default=1)
+    train_spark_parser.add_argument("--epoch-size", dest="epoch_size", type=int, default=None, help="Optional number of batches per epoch (default: full dataloader length).")
     train_spark_parser.add_argument("--learning-rate", type=float, default=1e-3)
     train_spark_parser.add_argument("--device", default=None, help="Execution device, for example cpu, gpu, cuda:0, or mps.")
 
@@ -680,6 +681,24 @@ def build_parser() -> argparse.ArgumentParser:
     dino_vis_parser.add_argument("--query-x", type=int, default=None, help="Optional X pixel coordinate for query patch.")
     dino_vis_parser.add_argument("--query-y", type=int, default=None, help="Optional Y pixel coordinate for query patch.")
     dino_vis_parser.add_argument("--device", default=None, help="Execution device.")
+    train_distill_parser = _add_command_parser(
+        subparsers,
+        "train-distill",
+        help_text="Distill DINO ViT features into a YOLO dense backbone.",
+        description="Teacher-Student distillation from ViT to CNN using NAIP dataset.",
+    )
+    train_distill_parser.add_argument("data_root", nargs="?", default=None, help="Dataset root directory.")
+    train_distill_parser.add_argument("output_dir", nargs="?", default=None, help="Output directory.")
+    train_distill_parser.add_argument("--teacher-weights", type=str, default="official", help="Path to trained DINO checkpoint, or 'official' for torch.hub")
+    train_distill_parser.add_argument("--vit-name", type=str, choices=["S", "B", "L"], default="B", help="Teacher ViT architecture.")
+    train_distill_parser.add_argument("--backbone-type", type=str, default="yolo11l", help="Student YOLO backbone architecture.")
+    train_distill_parser.add_argument("--batch-size", type=int, default=32)
+    train_distill_parser.add_argument("--epochs", type=int, default=100)
+    train_distill_parser.add_argument("--precision", type=str, choices=["fp32", "fp16", "bf16"], default="bf16")
+    train_distill_parser.add_argument("--learning-rate", type=float, default=1e-3)
+    train_distill_parser.add_argument("--num-workers", type=int, default=4)
+    train_distill_parser.add_argument("--device", type=str, default=None)
+    train_distill_parser.add_argument("--resume", action="store_true")
 
 
     mississippi_pretrain_parser = _add_command_parser(
@@ -1474,6 +1493,7 @@ def main(argv: list[str] | None = None) -> int:
             import poultry_geo.spark_models as spark_models
             import poultry_geo.train_spark_ssl as train_spark_ssl
             import poultry_geo.models as models
+            from poultry_geo.progress import CommandProgress
 
             device = _resolve_torch_device_alias(args.device)
             if device.type == "cuda":
@@ -1511,59 +1531,134 @@ def main(argv: list[str] | None = None) -> int:
                 batch_size=args.batch_size
             )
 
-            print(f"Starting SparK training on {device}...")
             os.makedirs(args.output_dir, exist_ok=True)
+            
+            # Smart Resume Logic
+            start_epoch = 0
+            latest_ckpt_path = os.path.join(args.output_dir, 'spark_unified_latest.pt')
+            if os.path.exists(latest_ckpt_path):
+                print(f"Found existing checkpoint at {latest_ckpt_path}, resuming...")
+                checkpoint = torch.load(latest_ckpt_path, map_location=device, weights_only=True)
+                model.load_state_dict(checkpoint['model_state_dict'])
+                if 'optimizer_state_dict' in checkpoint:
+                    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                if 'scaler_state_dict' in checkpoint and checkpoint['scaler_state_dict'] is not None and scaler is not None:
+                    scaler.load_state_dict(checkpoint['scaler_state_dict'])
+                start_epoch = checkpoint['epoch'] + 1
+                print(f"Resumed successfully from epoch {checkpoint['epoch']}.")
+            else:
+                print(f"Starting SparK training from scratch on {device}...")
             
             import pandas as pd
             import time
             import json
             import platform
+            
             history = []
+            metrics_path = os.path.join(args.output_dir, "metrics.csv")
+            best_loss = float('inf')
+            if os.path.exists(metrics_path):
+                history_df = pd.read_csv(metrics_path)
+                history = history_df.to_dict('records')
+                if 'train_loss' in history_df.columns and not history_df.empty:
+                    best_loss = history_df['train_loss'].min()
             
-            # Record initial experiment metadata
-            experiment_info = {
-                "system": platform.platform(),
-                "python_version": platform.python_version(),
-                "device": str(device),
-                "args": vars(args),
-                "start_time": time.time()
-            }
-            with open(os.path.join(args.output_dir, "experiment_info.json"), "w") as f:
-                json.dump(experiment_info, f, indent=4)
+            if start_epoch == 0:
+                # Record initial experiment metadata
+                experiment_info = {
+                    "system": platform.platform(),
+                    "python_version": platform.python_version(),
+                    "device": str(device),
+                    "args": vars(args),
+                    "start_time": time.time()
+                }
+                with open(os.path.join(args.output_dir, "experiment_info.json"), "w") as f:
+                    json.dump(experiment_info, f, indent=4)
             
-            for epoch in range(args.epochs):
+            for epoch in range(start_epoch, args.epochs):
                 model.train()
                 epoch_loss = 0
                 epoch_start_time = time.time()
-                for i, batch in enumerate(train_loader):
-                    img = batch["image"].to(device, non_blocking=True)
-                    loss = train_spark_ssl.train_one_step(
-                        model, optimizer, scaler, transformer, img, config
-                    )
-                    epoch_loss += loss
-                    if i % 10 == 0:
-                        print(f"Epoch {epoch} | Batch {i} | Loss: {loss:.4f}")
+                
+                # LR Schedule: Linear Warmup followed by Cosine Decay
+                import math
+                min_lr = 1e-6
+                warmup_epochs = min(40, max(5, int(args.epochs * 0.1)))
+                
+                if epoch < warmup_epochs:
+                    current_lr = min_lr + (args.learning_rate - min_lr) * (epoch / warmup_epochs)
+                else:
+                    progress = (epoch - warmup_epochs) / (args.epochs - warmup_epochs)
+                    current_lr = min_lr + 0.5 * (args.learning_rate - min_lr) * (1 + math.cos(math.pi * progress))
+                    
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = current_lr
+                
+                prog = CommandProgress(f"Epoch {epoch}/{args.epochs-1}")
+                prog.start()
+                total_steps = args.epoch_size if (getattr(args, "epoch_size", None) and args.epoch_size > 0) else len(train_loader)
+                
+                try:
+                    for i, batch in enumerate(train_loader):
+                        if getattr(args, "epoch_size", None) and args.epoch_size > 0 and i >= args.epoch_size:
+                            break
+                        img = batch["image"].to(device, non_blocking=True)
+                        loss = train_spark_ssl.train_one_step(
+                            model, optimizer, scaler, transformer, img, config
+                        )
+                        epoch_loss += loss
+                        
+                        current_lr = optimizer.param_groups[0]['lr']
+                        prog.update(i + 1, total_steps, detail=f"loss: {loss:.4f} | lr: {current_lr:.6f} | img/s: {args.batch_size/max((time.time()-epoch_start_time)/(i+1), 0.001):.1f}")
+                        
+                        # Debug Visualization hook at end of epoch
+                        if i == total_steps - 1:
+                            # Forward pass one more time manually to get the tensors for visualization
+                            with torch.no_grad():
+                                dtype = torch.float32 if config.precision == 'FP32' else (torch.float16 if config.precision == 'FP16' else torch.bfloat16)
+                                with torch.amp.autocast(device_type='cuda', enabled=(config.precision != 'FP32'), dtype=dtype):
+                                    sparse_tensor, mask = transformer(img)
+                                    reconstructed = model(sparse_tensor, mask)
+                                    target = transformer.adapter(img)
+                                vis_path = os.path.join(args.output_dir, f'spark_vis_ep{epoch}.png')
+                                train_spark_ssl.save_spark_visualization(target, mask, reconstructed, vis_path)
+                                print(f"\nSaved visual debug to {vis_path}")
+                finally:
+                    prog.finish(success=True)
                 
                 epoch_duration = time.time() - epoch_start_time
-                avg_loss = epoch_loss / len(train_loader)
+                avg_loss = epoch_loss / total_steps
                 print(f"Epoch {epoch} complete in {epoch_duration:.2f}s. Avg Loss: {avg_loss:.4f}")
                 
                 # Record metrics
                 history.append({
-                    "epoch": epoch + 1,
+                    "epoch": epoch,
                     "train_loss": avg_loss,
-                    "lr": args.learning_rate,
+                    "lr": current_lr,
                     "epoch_duration_seconds": epoch_duration
                 })
-                pd.DataFrame(history).to_csv(os.path.join(args.output_dir, "metrics.csv"), index=False)
+                pd.DataFrame(history).to_csv(metrics_path, index=False)
                 
                 # Save checkpoints
-                train_spark_ssl.save_spark_checkpoint(model, config, args.output_dir, epoch)
+                train_spark_ssl.save_spark_checkpoint(model, optimizer, scaler, config, args.output_dir, epoch)
+                
+                # Track best model
+                if avg_loss < best_loss:
+                    best_loss = avg_loss
+                    best_ckpt_path = os.path.join(args.output_dir, 'spark_unified_best.pt')
+                    import shutil
+                    shutil.copyfile(os.path.join(args.output_dir, 'spark_unified_latest.pt'), best_ckpt_path)
+                    print(f"New best model saved! (loss: {best_loss:.4f})")
 
-            experiment_info["end_time"] = time.time()
-            experiment_info["total_duration_seconds"] = experiment_info["end_time"] - experiment_info["start_time"]
-            with open(os.path.join(args.output_dir, "experiment_info.json"), "w") as f:
-                json.dump(experiment_info, f, indent=4)
+            if start_epoch < args.epochs:
+                info_path = os.path.join(args.output_dir, "experiment_info.json")
+                if os.path.exists(info_path):
+                    with open(info_path, "r") as f:
+                        experiment_info = json.load(f)
+                    experiment_info["end_time"] = time.time()
+                    experiment_info["total_duration_seconds"] = experiment_info["end_time"] - experiment_info.get("start_time", time.time())
+                    with open(info_path, "w") as f:
+                        json.dump(experiment_info, f, indent=4)
 
             return 0
 
@@ -1763,6 +1858,142 @@ def main(argv: list[str] | None = None) -> int:
             with open(os.path.join(args.output_dir, "experiment_info.json"), "w") as f:
                 json.dump(experiment_info, f, indent=4)
 
+            return 0
+            
+        if args.command == "train-distill":
+            import os
+            import time
+            import json
+            import platform
+            import pandas as pd
+            import torch
+            from torch.cuda.amp import GradScaler
+            
+            import poultry_geo.naip_data as naip_data
+            from poultry_geo.distill_models import DistillationStudent
+            from poultry_geo.distill_loss import FeatureDistillationLoss
+            from poultry_geo.train_distill import DistillConfig, load_teacher, train_one_step
+            from poultry_geo.progress import CommandProgress
+            
+            device = _resolve_torch_device_alias(args.device)
+            if device.type == "cuda":
+                torch.backends.cudnn.benchmark = True
+                if hasattr(torch, "set_float32_matmul_precision"):
+                    torch.set_float32_matmul_precision("high")
+                    
+            os.makedirs(args.output_dir, exist_ok=True)
+            
+            config = DistillConfig(
+                precision=args.precision,
+                backbone_type=args.backbone_type,
+                lr=args.learning_rate,
+                batch_size=args.batch_size,
+                vit_name=args.vit_name
+            )
+            
+            print(f"Initializing Distillation: Teacher=ViT-{config.vit_name}, Student={config.backbone_type}")
+            
+            # 1. Load Teacher (Frozen)
+            teacher = load_teacher(args.teacher_weights, config, device)
+            
+            # 2. Load Student
+            student = DistillationStudent(backbone_type=config.backbone_type, vit_embed_dim=config.vit_embed_dim)
+            student.to(device)
+            
+            # 3. Loss and Optimizer
+            criterion = FeatureDistillationLoss()
+            optimizer = torch.optim.AdamW(student.parameters(), lr=config.lr, weight_decay=1e-4)
+            if config.precision in ['fp16', 'bf16'] and device.type == 'cuda':
+                from torch.amp import GradScaler
+                scaler = GradScaler('cuda')
+            else:
+                scaler = None
+            
+            # 4. Dataset
+            print("Loading dataset...")
+            train_loader, val_loader = naip_data.get_dataloaders(
+                root=args.data_root,
+                batch_size=args.batch_size,
+                crop_size=224,
+                num_workers=args.num_workers,
+                precision='fp32',
+                val_fraction=0.1,
+                seed=42
+            )
+            
+            start_epoch = 0
+            history = []
+            metrics_path = os.path.join(args.output_dir, "metrics.csv")
+            
+            if args.resume:
+                ckpt_path = os.path.join(args.output_dir, "last.pt")
+                if os.path.exists(ckpt_path):
+                    print(f"Resuming from {ckpt_path}")
+                    checkpoint = torch.load(ckpt_path, map_location=device)
+                    student.load_state_dict(checkpoint['model'])
+                    optimizer.load_state_dict(checkpoint['optimizer'])
+                    if scaler and 'scaler' in checkpoint:
+                        scaler.load_state_dict(checkpoint['scaler'])
+                    start_epoch = checkpoint['epoch'] + 1
+                    if os.path.exists(metrics_path):
+                        history = pd.read_csv(metrics_path).to_dict('records')
+            
+            print(f"Starting Distillation for {args.epochs - start_epoch} epochs on {device}")
+            
+            try:
+                print("Compiling models with torch.compile for maximum speed...")
+                student = torch.compile(student)
+                teacher = torch.compile(teacher)
+            except Exception as e:
+                print(f"Skipping torch.compile due to error: {e}")
+            
+            batches_per_epoch = len(train_loader)
+            total_steps = batches_per_epoch * args.epochs
+            
+            for epoch in range(start_epoch, args.epochs):
+                student.train()
+                epoch_loss = 0
+                epoch_start_time = time.time()
+                
+                for i, batch in enumerate(train_loader):
+                    img = batch["image"].to(device, non_blocking=True)
+                    loss = train_one_step(student, teacher, criterion, optimizer, scaler, img, config)
+                    epoch_loss += loss
+                    
+                    completed_work = epoch * batches_per_epoch + i + 1
+                    avg_loss_so_far = epoch_loss / (i + 1)
+                    lr_current = optimizer.param_groups[0]["lr"]
+                    detail_str = (
+                        f"E{epoch+1}/{args.epochs} B{i+1}/{batches_per_epoch} "
+                        f"Loss:{loss:.4f} (Avg:{avg_loss_so_far:.4f}) LR:{lr_current:.1e}"
+                    )
+                    
+                    if progress_callback is not None:
+                        progress_callback(completed_work, total_steps, detail=detail_str)
+                    elif i % 10 == 0:
+                        print(f"[{detail_str}]")
+                        
+                epoch_duration = time.time() - epoch_start_time
+                avg_loss = epoch_loss / len(train_loader)
+                print(f"Epoch {epoch} complete in {epoch_duration:.2f}s. Avg Loss: {avg_loss:.4f}")
+                
+                history.append({
+                    "epoch": epoch,
+                    "train_loss": avg_loss,
+                    "lr": args.learning_rate,
+                    "epoch_duration_seconds": epoch_duration
+                })
+                pd.DataFrame(history).to_csv(metrics_path, index=False)
+                
+                # Save checkpoint
+                torch.save({
+                    'epoch': epoch,
+                    'model': student.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    'scaler': scaler.state_dict() if scaler else None,
+                    'config': vars(config)
+                }, os.path.join(args.output_dir, "last.pt"))
+                
             return 0
 
         if args.command == "visualize-dino-similarity":

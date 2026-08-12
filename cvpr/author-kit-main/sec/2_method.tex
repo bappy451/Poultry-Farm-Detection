@@ -1,0 +1,64 @@
+\section{Methodology}
+\label{sec:method}
+
+We formulate a Domain-Adaptive Pre-Training (DAPT) strategy that explicitly balances local structural fidelity with global semantic distinctiveness. Given an unlabeled remote sensing corpus $\mathcal{D} = \{\mathbf{x}_i\}_{i=1}^N$, our objective is to learn a mapping $f_\theta: \mathcal{X} \rightarrow \mathbb{R}^D$ that optimally initializes downstream object detection architectures.
+
+\subsection{Architectural Blueprint: Self-Distillation}
+The prevalent trend in remote sensing foundation models leans heavily toward Masked Image Modeling (MIM) \cite{sun2023ringmo}. However, for the fine-grained detection of agricultural infrastructure, purely reconstructive objectives risk losing global semantic separability. To circumvent this, we leverage a student-teacher self-distillation framework grounded in pure DINO \cite{caron2021emerging}. 
+
+\begin{figure}[h]
+    \centering
+    \resizebox{\linewidth}{!}{
+    \begin{tikzpicture}[transform shape, node distance=1.5cm,
+        box/.style={rectangle, draw, rounded corners, align=center, minimum width=2.5cm, minimum height=1cm, fill=blue!10},
+        arrow/.style={thick,->,>=stealth}]
+        
+        \node[box, fill=gray!20] (input) {Input Image $\mathbf{x}$};
+        \node[box, below left=of input, xshift=-1cm] (global) {Global Crops $\mathcal{V}_g$};
+        \node[box, below right=of input, xshift=1cm] (local) {Local Crops $\mathcal{V}_l$};
+        
+        \node[box, below=of global, fill=red!10] (teacher) {Teacher ViT $\theta_t$};
+        \node[box, below=of local, fill=green!10] (student) {Student ViT $\theta_s$};
+        
+        \node[box, below=of teacher] (t_proj) {Projection Head};
+        \node[box, below=of student] (s_proj) {Projection Head};
+        
+        \node[box, below=1cm of t_proj, xshift=2.5cm, fill=yellow!20] (loss) {$\mathcal{L}_{\text{DINO}}$};
+        
+        \draw[arrow] (input) -- (global);
+        \draw[arrow] (input) -- (local);
+        \draw[arrow] (global) -- (teacher);
+        \draw[arrow] (global) -- (student);
+        \draw[arrow] (local) -- (student);
+        
+        \draw[arrow] (teacher) -- (t_proj);
+        \draw[arrow] (student) -- (s_proj);
+        
+        \draw[arrow] (t_proj) |- (loss);
+        \draw[arrow] (s_proj) |- (loss);
+        
+        \draw[thick, dashed, ->] (student) -- node[above] {EMA update} (teacher);
+    \end{tikzpicture}
+    }
+    \caption{Self-Distillation Architecture. The student network processes both global and local crops, while the teacher processes only global crops. The networks are jointly optimized via DINO cross-entropy.}
+    \label{fig:architecture}
+\end{figure}
+
+Both the student network parameterized by $\theta_s$ and the teacher network parameterized by $\theta_t$ instantiate a Vision Transformer architecture (ViT-Base/16). The network comprises $L=12$ transformer blocks with a hidden dimension of $D = 768$ and 12 attention heads. The projection head consists of a 3-layer Multi-Layer Perceptron (MLP) mapping the $D$-dimensional embedding to 2048, followed by an L2-normalized 256-dimensional bottleneck, yielding a weight-normalized projection to produce $K = 65,536$ semantic prototype logits.
+
+\subsection{Multi-Crop Augmentation for Spatial Semantics}
+While contrastive alignment fosters separable global embeddings \cite{jain2022multimodal}, the spatial alignment of small objects necessitates localized context. We enforce local-to-global semantic consistency by transforming each input image $\mathbf{x}$ into a structurally diverse set of cropped views $\mathcal{V}$. This set contains two global macroscopic views $\mathcal{V}_g$ (resolution $224 \times 224$, covering $>32\%$ of the image area) and eight local microscopic views $\mathcal{V}_l$ (resolution $96 \times 96$, covering $<32\%$ of the image area). 
+
+The student network processes the union $\mathcal{V} = \mathcal{V}_g \cup \mathcal{V}_l$, whereas the teacher network strictly processes the global crops $\mathcal{V}_g$. By forcing the student to predict macroscopic semantic distributions from highly fragmented local views, the network intrinsically learns the spatial composition of agricultural infrastructure.
+
+\subsection{Objective Formulation}
+The total loss minimized during training focuses on semantic discrimination.
+
+\paragraph{DINO Cross-Entropy.} We compute the cross-entropy between the student and teacher prototype distributions over the global [CLS] token. Let $P_s$ and $P_t$ represent the output probability distributions of the student and teacher respectively, sharpened by temperature parameters $\tau_s$ and $\tau_t$. The self-distillation loss is given by:
+\begin{equation}
+    \mathcal{L}_{\text{DINO}} = \sum_{x \in \mathcal{V}_g} \sum_{x' \in \mathcal{V}, x' \neq x} - P_t(x) \log P_s(x')
+\end{equation}
+To avert dimensional collapse without requiring negative pairs, the teacher outputs are centered using an Exponential Moving Average (EMA) of batch activations \cite{caron2021emerging}.
+
+\subsection{Optimization and Dataset Engineering}
+The teacher network is explicitly detached from the gradient graph. Its weights $\theta_t$ are updated via an exponential moving average of the student's weights $\theta_s$, governed by a cosine momentum schedule scaling from $0.996$ to $1.0$. The pre-training operates on roughly 1.5 TB of unlabeled NAIP imagery ($9.87 \times 10^6$ tiles). To prevent severe inode I/O bottlenecks during distributed training, the imagery was transcoded into sequential WebDataset shards, allowing the AdamW optimizer to sustain an effective batch size of 1024 with mixed-precision (bfloat16) throughput.

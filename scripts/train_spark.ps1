@@ -34,8 +34,8 @@ $loggingEnabled = $true
 $showUsage = $false
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $forwardArgs = New-Object System.Collections.Generic.List[string]
-$dataRoot = ""
-$outputDir = ""
+$dataRoot = "E:\NAIP_Dataset_PH"
+$outputDir = "runs\spark_pretrain_yolo11l"
 
 $index = 0
 while ($index -lt $originalArgs.Count) {
@@ -100,6 +100,26 @@ while ($index -lt $originalArgs.Count) {
             $index += 1
             continue
         }
+    }
+}
+
+$defaultArgs = @(
+    "--backbone-type", "yolo11l",
+    "--batch-size", "128",
+    "--epochs", "300",
+    "--epoch-size", "2500",
+    "--precision", "bf16",
+    "--learning-rate", "0.0002",
+    "--mask-ratio", "0.65",
+    "--num-workers", "16"
+)
+
+for ($i = 0; $i -lt $defaultArgs.Count; $i += 2) {
+    $argName = $defaultArgs[$i]
+    $argValue = $defaultArgs[$i+1]
+    if ($originalArgs -notcontains $argName) {
+        $forwardArgs.Add($argName) | Out-Null
+        $forwardArgs.Add($argValue) | Out-Null
     }
 }
 

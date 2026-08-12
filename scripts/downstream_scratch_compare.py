@@ -32,6 +32,7 @@ from pathlib import Path
 
 import torch
 import yaml
+import numpy as np
 
 # ── Project root (two levels up from this script) ────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent
@@ -70,7 +71,7 @@ DEFAULT_TRAIN_ARGS: dict = dict(
     mosaic=1.0,
     close_mosaic=10,
     amp=True,
-    workers=8,
+    workers=0,
     verbose=True,
     exist_ok=True,
     plots=True,
@@ -160,9 +161,24 @@ def run_experiment(
         LPFT_LLRD_OBBTrainer.layer_decay = layer_decay
         kwargs["trainer"] = LPFT_LLRD_OBBTrainer
 
-    model.train(**kwargs)
-
     metrics = _extract_metrics(save_dir)
+    target_epochs = str(kwargs.get("epochs", 50))
+    if (save_dir / "weights" / "best.pt").exists() and metrics.get("epoch", "") == target_epochs:
+        print(f"[Skip] Found completed training for {name}. Extracting metrics directly.")
+    else:
+        import time
+        max_retries = 10
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    kwargs["resume"] = True
+                model.train(**kwargs)
+                break
+            except PermissionError as e:
+                print(f"\n[WARNING] PermissionError on Windows (file lock): {e}")
+                print(f"Retrying in 10 seconds... (Attempt {attempt+1}/{max_retries})\n")
+                time.sleep(10)
+        metrics = _extract_metrics(save_dir)
     metrics["experiment"] = name
     metrics["spark_pretrained"] = str(use_spark)
     metrics["random_init"] = str(is_random)
@@ -238,27 +254,6 @@ def main() -> None:
     results: list[dict] = []
     metrics_by_name: dict[str, dict] = {}
 
-    for exp in experiments:
-        exp_name = exp["name"]
-        m = run_experiment(
-            name=exp_name,
-            use_spark=bool(exp.get("use_spark", False)),
-            is_random=bool(exp.get("is_random", False)),
-            use_lpft_llrd=bool(exp.get("use_lpft_llrd", False)),
-            train_args=train_args,
-            lp_epochs=lp_epochs,
-            layer_decay=layer_decay,
-            spark_backbone_pt=spark_pt,
-            output_dir=output_dir,
-        )
-        results.append(m)
-        metrics_by_name[exp_name] = m
-
-    # ── Print comparison table ────────────────────────────────────────────────
-    print("\n" + "=" * 80)
-    print(f"  THREE-WAY COMPARISON RESULTS ({train_args.get('epochs', 50)} Epochs)")
-    print("=" * 80)
-
     metric_keys = [
         "metrics/precision(B)",
         "metrics/recall(B)",
@@ -266,12 +261,58 @@ def main() -> None:
         "metrics/mAP50-95(B)",
     ]
 
+    repeats = int(config.get("repeats", 1))
+    seeds = [0, 42, 1337, 2024, 9999][:repeats]
+
+    for exp in experiments:
+        exp_name = exp["name"]
+        exp_results = []
+        for seed in seeds:
+            print(f"\n--- Running {exp_name} with seed {seed} ---")
+            train_args_seed = dict(train_args)
+            train_args_seed["seed"] = seed
+            m = run_experiment(
+                name=f"{exp_name}_seed{seed}",
+                use_spark=bool(exp.get("use_spark", False)),
+                is_random=bool(exp.get("is_random", False)),
+                use_lpft_llrd=bool(exp.get("use_lpft_llrd", False)),
+                train_args=train_args_seed,
+                lp_epochs=lp_epochs,
+                layer_decay=layer_decay,
+                spark_backbone_pt=spark_pt,
+                output_dir=output_dir,
+            )
+            exp_results.append(m)
+            
+        if repeats > 1:
+            agg_m = {"experiment": exp_name}
+            for k in metric_keys:
+                vals = [float(r.get(k, 0.0)) for r in exp_results if r.get(k)]
+                if vals:
+                    agg_m[k] = f"{np.mean(vals):.4f} ± {np.std(vals):.4f}"
+                    agg_m[f"{k}_mean"] = np.mean(vals)
+                else:
+                    agg_m[k] = "N/A"
+                    agg_m[f"{k}_mean"] = 0.0
+            results.append(agg_m)
+            metrics_by_name[exp_name] = agg_m
+        else:
+            results.append(exp_results[0])
+            metrics_by_name[exp_name] = exp_results[0]
+
+    # ── Print comparison table ────────────────────────────────────────────────
+    print("\n" + "=" * 80)
+    print(f"  THREE-WAY COMPARISON RESULTS ({train_args.get('epochs', 50)} Epochs)")
+    print("=" * 80)
+
+    # metric_keys already defined above
+
     header = f"{'Experiment':<24} " + "  ".join(f"{k:<18}" for k in metric_keys)
     print(header)
     print("-" * len(header))
     for r in results:
         row = f"{r.get('experiment',''):<24} " + "  ".join(
-            f"{float(r.get(k, 0.0)):<18.4f}" if r.get(k) and r.get(k) != "N/A" else f"{'N/A':<18}"
+            f"{r.get(k):<18}" if isinstance(r.get(k), str) else (f"{float(r.get(k, 0.0)):<18.4f}" if r.get(k) and r.get(k) != "N/A" else f"{'N/A':<18}")
             for k in metric_keys
         )
         print(row)
@@ -287,9 +328,14 @@ def main() -> None:
 
     # ── Quick Delta Analysis ──────────────────────────────────────────────────
     try:
-        map50_imgnet = float(metrics_by_name.get("imagenet_baseline", {}).get("metrics/mAP50(B)", "nan"))
-        map50_rand = float(metrics_by_name.get("random_init", {}).get("metrics/mAP50(B)", "nan"))
-        map50_spark = float(metrics_by_name.get("spark_scratch_lpft", {}).get("metrics/mAP50(B)", "nan"))
+        if repeats > 1:
+            map50_imgnet = float(metrics_by_name.get("imagenet_baseline", {}).get("metrics/mAP50(B)_mean", "nan"))
+            map50_rand = float(metrics_by_name.get("random_init", {}).get("metrics/mAP50(B)_mean", "nan"))
+            map50_spark = float(metrics_by_name.get("spark_scratch_lpft", {}).get("metrics/mAP50(B)_mean", "nan"))
+        else:
+            map50_imgnet = float(metrics_by_name.get("imagenet_baseline", {}).get("metrics/mAP50(B)", "nan"))
+            map50_rand = float(metrics_by_name.get("random_init", {}).get("metrics/mAP50(B)", "nan"))
+            map50_spark = float(metrics_by_name.get("spark_scratch_lpft", {}).get("metrics/mAP50(B)", "nan"))
 
         print("\n" + "-" * 70)
         print("  mAP50 DELTA ANALYSIS:")

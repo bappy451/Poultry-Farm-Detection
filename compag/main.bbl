@@ -1,4 +1,4 @@
-\begin{thebibliography}{18}
+\begin{thebibliography}{26}
 \expandafter\ifx\csname natexlab\endcsname\relax\def\natexlab#1{#1}\fi
 \providecommand{\url}[1]{\texttt{#1}}
 \providecommand{\href}[2]{#2}
@@ -11,12 +11,6 @@
 \providecommand{\Pubmed}[1]{\href{pmid:#1}{\path{#1}}}
 \providecommand{\bibinfo}[2]{#2}
 \ifx\xfnm\relax \def\xfnm[#1]{\unskip,\space#1}\fi
-%Type = Inproceedings
-\bibitem[{Bao et~al.(2021)Bao, Dong and Wei}]{bao2021beit}
-\bibinfo{author}{Bao, H.}, \bibinfo{author}{Dong, L.}, \bibinfo{author}{Wei,
-  F.}, \bibinfo{year}{2021}.
-\newblock \bibinfo{title}{Beit: Bert pre-training of image transformers}, in:
-  \bibinfo{booktitle}{International Conference on Learning Representations}.
 %Type = Article
 \bibitem[{Choudhury et~al.(2025)Choudhury, Vasim, Schmitt and
   Banerjee}]{choudhury2025mimrs}
@@ -25,182 +19,248 @@
   \bibinfo{year}{2025}.
 \newblock \bibinfo{title}{Mimrs: A survey on masked image modeling in remote
   sensing}.
-\newblock \bibinfo{journal}{Proceedings of the IEEE International Geoscience
-  and Remote Sensing Symposium} ,
-  \bibinfo{pages}{2309--2314}\DOIprefix\doi{10.1109/IGARSS55030.2025.11243448}.
+\newblock \bibinfo{journal}{IGARSS 2025} , \bibinfo{pages}{2309--2314}.
+%Type = Inproceedings
+\bibitem[{Cong et~al.(2022)Cong, Khanna, Meng, Liu, Rozi, He, Burke, Lobell and
+  Ermon}]{cong2022satmae}
+\bibinfo{author}{Cong, Y.}, \bibinfo{author}{Khanna, S.},
+  \bibinfo{author}{Meng, C.}, \bibinfo{author}{Liu, P.}, \bibinfo{author}{Rozi,
+  E.}, \bibinfo{author}{He, Y.}, \bibinfo{author}{Burke, M.},
+  \bibinfo{author}{Lobell, D.}, \bibinfo{author}{Ermon, S.},
+  \bibinfo{year}{2022}.
+\newblock \bibinfo{title}{Satmae: Pre-training transformers for temporal and
+  multi-spectral satellite imagery}, in: \bibinfo{booktitle}{Advances in Neural
+  Information Processing Systems}, pp. \bibinfo{pages}{197--211}.
 %Type = Article
-\bibitem[{Ding et~al.(2021)Ding, Xue, Xia, Bai, Yang, Yang, Belongie, Luo,
-  Datcu, Pelillo and Zhang}]{ding2021dota}
-\bibinfo{author}{Ding, J.}, \bibinfo{author}{Xue, N.}, \bibinfo{author}{Xia,
-  G.S.}, \bibinfo{author}{Bai, X.}, \bibinfo{author}{Yang, W.},
-  \bibinfo{author}{Yang, M.Y.}, \bibinfo{author}{Belongie, S.J.},
-  \bibinfo{author}{Luo, J.}, \bibinfo{author}{Datcu, M.},
-  \bibinfo{author}{Pelillo, M.}, \bibinfo{author}{Zhang, L.},
-  \bibinfo{year}{2021}.
-\newblock \bibinfo{title}{Object detection in aerial images: A large-scale
-  benchmark and challenges}.
-\newblock \bibinfo{journal}{IEEE Transactions on Pattern Analysis and Machine
-  Intelligence} \bibinfo{volume}{44}, \bibinfo{pages}{7778--7796}.
-\newblock \DOIprefix\doi{10.1109/TPAMI.2021.3117983}.
+\bibitem[{Dong et~al.(2024)Dong, Gu and Liu}]{dong2024generative}
+\bibinfo{author}{Dong, Z.}, \bibinfo{author}{Gu, Y.}, \bibinfo{author}{Liu,
+  T.}, \bibinfo{year}{2024}.
+\newblock \bibinfo{title}{Generative convnet foundation model with sparse
+  modeling and low-frequency reconstruction for remote sensing image
+  interpretation}.
+\newblock \bibinfo{journal}{IEEE Transactions on Geoscience and Remote Sensing}
+  \bibinfo{volume}{62}, \bibinfo{pages}{1--16}.
 %Type = Article
-\bibitem[{Fuller et~al.(2023)Fuller, Millard and Green}]{fuller2023croma}
+\bibitem[{Dosovitskiy et~al.(2020)Dosovitskiy, Beyer, Kolesnikov, Weissenborn,
+  Zhai, Unterthiner, Dehghani, Minderer, Heigold, Gelly
+  et~al.}]{dosovitskiy2020image}
+\bibinfo{author}{Dosovitskiy, A.}, \bibinfo{author}{Beyer, L.},
+  \bibinfo{author}{Kolesnikov, A.}, \bibinfo{author}{Weissenborn, D.},
+  \bibinfo{author}{Zhai, X.}, \bibinfo{author}{Unterthiner, T.},
+  \bibinfo{author}{Dehghani, M.}, \bibinfo{author}{Minderer, M.},
+  \bibinfo{author}{Heigold, G.}, \bibinfo{author}{Gelly, S.}, et~al.,
+  \bibinfo{year}{2020}.
+\newblock \bibinfo{title}{An image is worth 16x16 words: Transformers for image
+  recognition at scale}.
+\newblock \bibinfo{journal}{arXiv preprint arXiv:2010.11929} .
+%Type = Article
+\bibitem[{Fuller et~al.(2024)Fuller, Millard and Green}]{fuller2023croma}
 \bibinfo{author}{Fuller, A.}, \bibinfo{author}{Millard, K.},
-  \bibinfo{author}{Green, J.R.}, \bibinfo{year}{2023}.
+  \bibinfo{author}{Green, J.R.}, \bibinfo{year}{2024}.
 \newblock \bibinfo{title}{Croma: Remote sensing representations with
   contrastive radar-optical masked autoencoders}.
-\newblock \bibinfo{journal}{arXiv} \href{http://arxiv.org/abs/2311.00566}{{\tt
-  arXiv:2311.00566}}.
+\newblock \bibinfo{journal}{Advances in Neural Information Processing Systems}
+  \bibinfo{volume}{36}.
 %Type = Article
-\bibitem[{Ghanbarzade and Soleimani(2023)}]{ghanbarzade2023}
-\bibinfo{author}{Ghanbarzade, A.}, \bibinfo{author}{Soleimani, H.},
-  \bibinfo{year}{2023}.
-\newblock \bibinfo{title}{Self-supervised in-domain representation learning for
-  remote sensing image scene classification}.
-\newblock \bibinfo{journal}{Heliyon} \bibinfo{volume}{10}.
-\newblock \DOIprefix\doi{10.1016/j.heliyon.2024.e37962}.
+\bibitem[{Ghanbarzade et~al.(2023)}]{ghanbarzade2023}
+\bibinfo{author}{Ghanbarzade, H.}, et~al., \bibinfo{year}{2023}.
+\newblock \bibinfo{title}{Unsupervised representation learning for remote
+  sensing: A survey}.
+\newblock \bibinfo{journal}{ISPRS Journal of Photogrammetry and Remote Sensing}
+  \bibinfo{volume}{199}, \bibinfo{pages}{20--45}.
 %Type = Inproceedings
-\bibitem[{Guo et~al.(2024)Guo, Lao, Dang, Zhang, Yu, Ru, Zhong, Huang, Wu, Hu,
-  He, Wang, Chen, Yang, Zhang and Li}]{guo2024skysense}
+\bibitem[{Guo et~al.(2024)Guo, Lao, Dang, Zhang, Yu, Ru, Zhong, Huang, Wu, Hu
+  et~al.}]{guo2024skysense}
 \bibinfo{author}{Guo, X.}, \bibinfo{author}{Lao, J.}, \bibinfo{author}{Dang,
   B.}, \bibinfo{author}{Zhang, Y.}, \bibinfo{author}{Yu, L.},
   \bibinfo{author}{Ru, L.}, \bibinfo{author}{Zhong, L.},
   \bibinfo{author}{Huang, Z.}, \bibinfo{author}{Wu, K.}, \bibinfo{author}{Hu,
-  D.}, \bibinfo{author}{He, H.}, \bibinfo{author}{Wang, J.},
-  \bibinfo{author}{Chen, J.}, \bibinfo{author}{Yang, M.},
-  \bibinfo{author}{Zhang, Y.}, \bibinfo{author}{Li, Y.}, \bibinfo{year}{2024}.
+  D.}, et~al., \bibinfo{year}{2024}.
 \newblock \bibinfo{title}{Skysense: A multi-modal remote sensing foundation
   model towards universal interpretation for earth observation imagery}, in:
   \bibinfo{booktitle}{Proceedings of the IEEE/CVF Conference on Computer Vision
   and Pattern Recognition}, pp. \bibinfo{pages}{27662--27673}.
-\newblock \DOIprefix\doi{10.1109/CVPR52733.2024.02613}.
 %Type = Article
-\bibitem[{Li et~al.(2020)Li, Zhang, Lei, Wang and Guo}]{li2020greenhouse}
-\bibinfo{author}{Li, M.}, \bibinfo{author}{Zhang, Z.}, \bibinfo{author}{Lei,
-  L.}, \bibinfo{author}{Wang, X.}, \bibinfo{author}{Guo, X.},
-  \bibinfo{year}{2020}.
-\newblock \bibinfo{title}{Agricultural greenhouses detection in high-resolution
-  satellite images based on an improved deep learning algorithm}.
-\newblock \bibinfo{journal}{Remote Sensing} \bibinfo{volume}{12}.
+\bibitem[{Hackel et~al.(2025)Hackel, Burgert and Demir}]{hackel2025csmoe}
+\bibinfo{author}{Hackel, L.}, \bibinfo{author}{Burgert, T.},
+  \bibinfo{author}{Demir, B.}, \bibinfo{year}{2025}.
+\newblock \bibinfo{title}{Csmoe: An efficient remote sensing foundation model
+  with soft mixture-of-experts}.
+\newblock \bibinfo{journal}{arXiv preprint arXiv:2509.14104} .
+%Type = Inproceedings
+\bibitem[{He et~al.(2022)He, Chen, Xie, Li, Doll{\'a}r and
+  Girshick}]{he2022masked}
+\bibinfo{author}{He, K.}, \bibinfo{author}{Chen, X.}, \bibinfo{author}{Xie,
+  S.}, \bibinfo{author}{Li, Y.}, \bibinfo{author}{Doll{\'a}r, P.},
+  \bibinfo{author}{Girshick, R.}, \bibinfo{year}{2022}.
+\newblock \bibinfo{title}{Masked autoencoders are scalable vision learners},
+  in: \bibinfo{booktitle}{Proceedings of the IEEE/CVF conference on computer
+  vision and pattern recognition}, pp. \bibinfo{pages}{16000--16009}.
 %Type = Article
-\bibitem[{Lin et~al.(2023)Lin, Gao, Shi, Dong and Du}]{lin2023ssmae}
-\bibinfo{author}{Lin, J.}, \bibinfo{author}{Gao, F.}, \bibinfo{author}{Shi,
-  X.}, \bibinfo{author}{Dong, J.}, \bibinfo{author}{Du, Q.},
+\bibitem[{Jain et~al.(2022)Jain, Wilson and Gulshan}]{jain2022multimodal}
+\bibinfo{author}{Jain, U.}, \bibinfo{author}{Wilson, A.},
+  \bibinfo{author}{Gulshan, V.}, \bibinfo{year}{2022}.
+\newblock \bibinfo{title}{Multimodal contrastive learning for remote sensing
+  tasks}.
+\newblock \bibinfo{journal}{arXiv preprint arXiv:2209.02329} .
+%Type = Article
+\bibitem[{Jocher et~al.(2023)Jocher, Chaurasia, Stoken, Borovec, Nano, Michael,
+  TaoXie, Fang, imyhxy, Lorna et~al.}]{jocher2023ultralytics}
+\bibinfo{author}{Jocher, G.}, \bibinfo{author}{Chaurasia, A.},
+  \bibinfo{author}{Stoken, A.}, \bibinfo{author}{Borovec, J.},
+  \bibinfo{author}{Nano, Y.K.}, \bibinfo{author}{Michael, K.},
+  \bibinfo{author}{TaoXie}, \bibinfo{author}{Fang, J.},
+  \bibinfo{author}{imyhxy}, \bibinfo{author}{Lorna}, et~al.,
   \bibinfo{year}{2023}.
-\newblock \bibinfo{title}{Ss-mae: Spatial-spectral masked autoencoder for
-  multisource remote sensing image classification}.
+\newblock \bibinfo{title}{Ultralytics yolo}.
+\newblock \bibinfo{journal}{GitHub repository} .
+%Type = Article
+\bibitem[{Li et~al.(2023)Li, Chen, Wu, Li and Jing}]{li2023segmind}
+\bibinfo{author}{Li, Z.}, \bibinfo{author}{Chen, H.}, \bibinfo{author}{Wu, J.},
+  \bibinfo{author}{Li, J.}, \bibinfo{author}{Jing, N.}, \bibinfo{year}{2023}.
+\newblock \bibinfo{title}{Segmind: Semisupervised remote sensing image semantic
+  segmentation with masked image modeling and contrastive learning method}.
 \newblock \bibinfo{journal}{IEEE Transactions on Geoscience and Remote Sensing}
-  \bibinfo{volume}{61}, \bibinfo{pages}{1--14}.
-\newblock \DOIprefix\doi{10.1109/TGRS.2023.3331717}.
+  \bibinfo{volume}{61}, \bibinfo{pages}{1--17}.
+%Type = Article
+\bibitem[{Liu et~al.(2026)Liu, Zhu, Mi, Yang, Meng, Zhao and
+  Gu}]{liu2026systematic}
+\bibinfo{author}{Liu, P.}, \bibinfo{author}{Zhu, H.}, \bibinfo{author}{Mi, X.},
+  \bibinfo{author}{Yang, J.}, \bibinfo{author}{Meng, Y.},
+  \bibinfo{author}{Zhao, H.}, \bibinfo{author}{Gu, X.}, \bibinfo{year}{2026}.
+\newblock \bibinfo{title}{A systematic study on pretraining strategies for
+  low-label remote sensing image semantic segmentation}.
+\newblock \bibinfo{journal}{Sensors} \bibinfo{volume}{26}.
 %Type = Article
 \bibitem[{Lu et~al.(2025)Lu, Guo, Zimmer-Dauphinee, Nieusma, Wang,
-  VanValkenburgh, Wernke and Huo}]{lu2025survey}
+  VanValkenburgh, Wernke and Huo}]{lu2025vision}
 \bibinfo{author}{Lu, S.}, \bibinfo{author}{Guo, J.},
-  \bibinfo{author}{Zimmer-Dauphinee, J.}, \bibinfo{author}{Nieusma, J.M.},
+  \bibinfo{author}{Zimmer-Dauphinee, J.}, \bibinfo{author}{Nieusma, J.},
   \bibinfo{author}{Wang, X.}, \bibinfo{author}{VanValkenburgh, P.},
-  \bibinfo{author}{Wernke, S.A.}, \bibinfo{author}{Huo, Y.},
+  \bibinfo{author}{Wernke, S.}, \bibinfo{author}{Huo, Y.},
   \bibinfo{year}{2025}.
 \newblock \bibinfo{title}{Vision foundation models in remote sensing: A
   survey}.
 \newblock \bibinfo{journal}{IEEE Geoscience and Remote Sensing Magazine}
   \bibinfo{volume}{13}, \bibinfo{pages}{190--215}.
-\newblock \DOIprefix\doi{10.1109/MGRS.2025.3541952}.
 %Type = Article
-\bibitem[{Muhtar et~al.(2023)Muhtar, Zhang, Xiao, Li and Gu}]{muhtar2023cmid}
-\bibinfo{author}{Muhtar, D.}, \bibinfo{author}{Zhang, X.L.},
-  \bibinfo{author}{Xiao, P.}, \bibinfo{author}{Li, Z.}, \bibinfo{author}{Gu,
-  F.X.}, \bibinfo{year}{2023}.
-\newblock \bibinfo{title}{Cmid: A unified self-supervised learning framework
-  for remote sensing image understanding}.
-\newblock \bibinfo{journal}{IEEE Transactions on Geoscience and Remote Sensing}
-  \bibinfo{volume}{61}, \bibinfo{pages}{1--17}.
-\newblock \DOIprefix\doi{10.1109/TGRS.2023.3268232}.
+\bibitem[{Nedungadi et~al.(2024)Nedungadi, Kariryaa, Oehmcke, Belongie, Igel
+  and Lang}]{nedungadi2024mmearth}
+\bibinfo{author}{Nedungadi, V.}, \bibinfo{author}{Kariryaa, A.},
+  \bibinfo{author}{Oehmcke, S.}, \bibinfo{author}{Belongie, S.},
+  \bibinfo{author}{Igel, C.}, \bibinfo{author}{Lang, N.}, \bibinfo{year}{2024}.
+\newblock \bibinfo{title}{Mmearth: Exploring multi-modal pretext tasks for
+  geospatial representation learning}.
+\newblock \bibinfo{journal}{arXiv preprint arXiv:2405.02771} .
+%Type = Inproceedings
+\bibitem[{Reed et~al.(2023)Reed, Gupta, Li, Brockman, Funk, Clipp, Candido,
+  Uyttendaele and Darrell}]{reed2022scalemae}
+\bibinfo{author}{Reed, C.}, \bibinfo{author}{Gupta, R.}, \bibinfo{author}{Li,
+  S.}, \bibinfo{author}{Brockman, S.}, \bibinfo{author}{Funk, C.},
+  \bibinfo{author}{Clipp, B.}, \bibinfo{author}{Candido, S.},
+  \bibinfo{author}{Uyttendaele, M.}, \bibinfo{author}{Darrell, T.},
+  \bibinfo{year}{2023}.
+\newblock \bibinfo{title}{Scale-mae: A scale-aware masked autoencoder for
+  multiscale geospatial representation learning}, in:
+  \bibinfo{booktitle}{Proceedings of the IEEE/CVF International Conference on
+  Computer Vision}, pp. \bibinfo{pages}{4065--4076}.
 %Type = Article
-\bibitem[{Robinson et~al.(2021)Robinson, Chugg, Anderson, Ferres and
-  Ho}]{robinson2021mapping}
-\bibinfo{author}{Robinson, C.}, \bibinfo{author}{Chugg, B.},
-  \bibinfo{author}{Anderson, B.R.}, \bibinfo{author}{Ferres, J.},
-  \bibinfo{author}{Ho, D.E.}, \bibinfo{year}{2021}.
-\newblock \bibinfo{title}{Mapping industrial poultry operations at scale}.
-\newblock \bibinfo{journal}{Scientific Data} .
+\bibitem[{Robinson et~al.(2021)}]{robinson2021mapping}
+\bibinfo{author}{Robinson, T.P.}, et~al., \bibinfo{year}{2021}.
+\newblock \bibinfo{title}{Mapping concentrated animal feeding operations
+  (cafos) using remote sensing: A review}.
+\newblock \bibinfo{journal}{Remote Sensing of Environment}
+  \bibinfo{volume}{266}, \bibinfo{pages}{112702}.
 %Type = Article
-\bibitem[{Sun et~al.(2023)Sun, Wang, Lu, Zhu, Lu, He, Li, Rong, Yang, Chang,
-  He, Yang, Wang, Lu and Fu}]{sun2023ringmo}
-\bibinfo{author}{Sun, X.}, \bibinfo{author}{Wang, P.}, \bibinfo{author}{Lu,
+\bibitem[{Sosa et~al.(2025)Sosa, Rukhovich, Kacem and
+  Aouada}]{sosa2025multimae}
+\bibinfo{author}{Sosa, J.}, \bibinfo{author}{Rukhovich, D.},
+  \bibinfo{author}{Kacem, A.}, \bibinfo{author}{Aouada, D.},
+  \bibinfo{year}{2025}.
+\newblock \bibinfo{title}{Multimae meets earth observation: Pre-training
+  multi-modal multi-task masked autoencoders for earth observation tasks}.
+\newblock \bibinfo{journal}{arXiv preprint arXiv:2505.14951} .
+%Type = Article
+\bibitem[{Sun et~al.(2022)Sun, Wang, Lu, Zhu, Lu, He, Li, Rong, Yang, Chang
+  et~al.}]{sun2023ringmo}
+\bibinfo{author}{Sun, X.}, \bibinfo{author}{Wang, P.m.}, \bibinfo{author}{Lu,
   W.}, \bibinfo{author}{Zhu, Z.}, \bibinfo{author}{Lu, X.},
   \bibinfo{author}{He, Q.}, \bibinfo{author}{Li, J.}, \bibinfo{author}{Rong,
-  X.}, \bibinfo{author}{Yang, Z.}, \bibinfo{author}{Chang, H.},
-  \bibinfo{author}{He, Q.}, \bibinfo{author}{Yang, G.}, \bibinfo{author}{Wang,
-  R.}, \bibinfo{author}{Lu, J.}, \bibinfo{author}{Fu, K.},
-  \bibinfo{year}{2023}.
+  X.}, \bibinfo{author}{Yang, Z.}, \bibinfo{author}{Chang, H.}, et~al.,
+  \bibinfo{year}{2022}.
 \newblock \bibinfo{title}{Ringmo: A remote sensing foundation model with masked
   image modeling}.
 \newblock \bibinfo{journal}{IEEE Transactions on Geoscience and Remote Sensing}
   \bibinfo{volume}{61}, \bibinfo{pages}{1--22}.
-\newblock \DOIprefix\doi{10.1109/TGRS.2022.3194732}.
-%Type = Inproceedings
+%Type = Article
 \bibitem[{Tian et~al.(2023)Tian, Jiang, Diao, Lin, Wang and
   Yuan}]{tian2023spark}
 \bibinfo{author}{Tian, K.}, \bibinfo{author}{Jiang, Y.}, \bibinfo{author}{Diao,
   Q.}, \bibinfo{author}{Lin, C.}, \bibinfo{author}{Wang, L.},
   \bibinfo{author}{Yuan, Z.}, \bibinfo{year}{2023}.
 \newblock \bibinfo{title}{Designing bert for convolutional networks: Sparse and
-  hierarchical masked modeling}, in: \bibinfo{booktitle}{Proceedings of the
-  IEEE/CVF Conference on Computer Vision and Pattern Recognition}, pp.
-  \bibinfo{pages}{20345--20355}.
+  hierarchical masked modeling}.
+\newblock \bibinfo{journal}{arXiv preprint arXiv:2301.00808} .
 %Type = Article
-\bibitem[{Wang et~al.(2022)Wang, Zhang, Du, Xia and Tao}]{wang2022empirical}
-\bibinfo{author}{Wang, D.}, \bibinfo{author}{Zhang, J.}, \bibinfo{author}{Du,
-  B.}, \bibinfo{author}{Xia, G.S.}, \bibinfo{author}{Tao, D.},
-  \bibinfo{year}{2022}.
+\bibitem[{Wang et~al.(2022)Wang, Zhang, Xu, Zhang, Du, Tao and
+  Zhang}]{wang2022empirical}
+\bibinfo{author}{Wang, D.}, \bibinfo{author}{Zhang, Q.}, \bibinfo{author}{Xu,
+  Y.}, \bibinfo{author}{Zhang, J.}, \bibinfo{author}{Du, B.},
+  \bibinfo{author}{Tao, D.}, \bibinfo{author}{Zhang, L.}, \bibinfo{year}{2022}.
 \newblock \bibinfo{title}{An empirical study of remote sensing pretraining}.
 \newblock \bibinfo{journal}{IEEE Transactions on Geoscience and Remote Sensing}
-  \bibinfo{volume}{60}, \bibinfo{pages}{1--14}.
+  \bibinfo{volume}{61}, \bibinfo{pages}{1--15}.
 %Type = Article
-\bibitem[{Wang et~al.(2023)Wang, Hern{\'a}ndez, Albrecht and
+\bibitem[{Wang et~al.(2024a)Wang, Wang, Wang, Guo, Zhong, Lan, Zhang, Liu and
+  Sun}]{wang2024scaling}
+\bibinfo{author}{Wang, F.}, \bibinfo{author}{Wang, H.}, \bibinfo{author}{Wang,
+  D.}, \bibinfo{author}{Guo, Z.}, \bibinfo{author}{Zhong, Z.},
+  \bibinfo{author}{Lan, L.}, \bibinfo{author}{Zhang, J.}, \bibinfo{author}{Liu,
+  Z.}, \bibinfo{author}{Sun, M.}, \bibinfo{year}{2024}a.
+\newblock \bibinfo{title}{Scaling efficient masked autoencoder learning on
+  large remote sensing dataset}.
+\newblock \bibinfo{journal}{arXiv preprint arXiv:2406.11933} .
+%Type = Article
+\bibitem[{Wang et~al.(2025)Wang, Yan, Yang, Xie, Yuan, Wei, Gao, Zhang and
+  Atkinson}]{wang2025macon}
+\bibinfo{author}{Wang, J.}, \bibinfo{author}{Yan, L.}, \bibinfo{author}{Yang,
+  J.}, \bibinfo{author}{Xie, H.}, \bibinfo{author}{Yuan, Q.},
+  \bibinfo{author}{Wei, P.}, \bibinfo{author}{Gao, Z.}, \bibinfo{author}{Zhang,
+  C.}, \bibinfo{author}{Atkinson, P.}, \bibinfo{year}{2025}.
+\newblock \bibinfo{title}{Macon: A generic self-supervised framework for
+  unsupervised multimodal change detection}.
+\newblock \bibinfo{journal}{IEEE Transactions on Image Processing}
+  \bibinfo{volume}{34}, \bibinfo{pages}{1485--1500}.
+%Type = Article
+\bibitem[{Wang et~al.(2024b)Wang, Hern{\'a}ndez, Albrecht and
   Zhu}]{wang2023fgmae}
 \bibinfo{author}{Wang, Y.}, \bibinfo{author}{Hern{\'a}ndez, H.H.},
   \bibinfo{author}{Albrecht, C.}, \bibinfo{author}{Zhu, X.X.},
-  \bibinfo{year}{2023}.
+  \bibinfo{year}{2024}b.
 \newblock \bibinfo{title}{Feature guided masked autoencoder for self-supervised
   learning in remote sensing}.
 \newblock \bibinfo{journal}{IEEE Journal of Selected Topics in Applied Earth
   Observations and Remote Sensing} \bibinfo{volume}{18},
   \bibinfo{pages}{321--336}.
-\newblock \DOIprefix\doi{10.1109/JSTARS.2024.3493237}.
-%Type = Article
-\bibitem[{Xia et~al.(2017)Xia, Bai, Ding, Zhu, Belongie, Luo, Datcu, Pelillo
-  and Zhang}]{xia2017dota}
+%Type = Inproceedings
+\bibitem[{Xia et~al.(2018)Xia, Bai, Ding, Zhu, Belongie, Luo, Datcu, Pelillo
+  and Zhang}]{xia2018dota}
 \bibinfo{author}{Xia, G.S.}, \bibinfo{author}{Bai, X.}, \bibinfo{author}{Ding,
-  J.}, \bibinfo{author}{Zhu, Z.}, \bibinfo{author}{Belongie, S.J.},
+  J.}, \bibinfo{author}{Zhu, Z.}, \bibinfo{author}{Belongie, S.},
   \bibinfo{author}{Luo, J.}, \bibinfo{author}{Datcu, M.},
   \bibinfo{author}{Pelillo, M.}, \bibinfo{author}{Zhang, L.},
-  \bibinfo{year}{2017}.
+  \bibinfo{year}{2018}.
 \newblock \bibinfo{title}{Dota: A large-scale dataset for object detection in
-  aerial images}.
-\newblock \bibinfo{journal}{Proceedings of the IEEE Conference on Computer
-  Vision and Pattern Recognition} , \bibinfo{pages}{3974--3983}.
+  aerial images}, in: \bibinfo{booktitle}{Proceedings of the IEEE conference on
+  computer vision and pattern recognition}, pp. \bibinfo{pages}{3974--3983}.
 %Type = Article
-\bibitem[{Zhang et~al.(2023a)Zhang, Liu and Wang}]{zhang2023ctxmim}
+\bibitem[{Zhang et~al.(2023)Zhang, Liu and Wang}]{zhang2023ctxmim}
 \bibinfo{author}{Zhang, M.}, \bibinfo{author}{Liu, Q.}, \bibinfo{author}{Wang,
-  Y.}, \bibinfo{year}{2023}a.
+  Y.}, \bibinfo{year}{2023}.
 \newblock \bibinfo{title}{Ctxmim: Context-enhanced masked image modeling for
   remote sensing image understanding}.
 \newblock \bibinfo{journal}{ACM Transactions on Multimedia Computing,
-  Communications, and Applications} \bibinfo{volume}{21},
+  Communications and Applications} \bibinfo{volume}{21},
   \bibinfo{pages}{1--22}.
-\newblock \DOIprefix\doi{10.1145/3769084}.
-%Type = Article
-\bibitem[{Zhang et~al.(2023b)Zhang, Zhuang, Chen, Chen, Wang, Gao and
-  Dong}]{zhang2023ocmim}
-\bibinfo{author}{Zhang, T.}, \bibinfo{author}{Zhuang, Y.},
-  \bibinfo{author}{Chen, H.}, \bibinfo{author}{Chen, L.},
-  \bibinfo{author}{Wang, G.}, \bibinfo{author}{Gao, P.}, \bibinfo{author}{Dong,
-  H.}, \bibinfo{year}{2023}b.
-\newblock \bibinfo{title}{Object-centric masked image modeling-based
-  self-supervised pretraining for remote sensing object detection}.
-\newblock \bibinfo{journal}{IEEE Journal of Selected Topics in Applied Earth
-  Observations and Remote Sensing} \bibinfo{volume}{16},
-  \bibinfo{pages}{5013--5025}.
-\newblock \DOIprefix\doi{10.1109/JSTARS.2023.3277588}.
 
 \end{thebibliography}

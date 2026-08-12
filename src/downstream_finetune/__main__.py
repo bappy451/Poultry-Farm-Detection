@@ -2,10 +2,17 @@ import argparse
 from pathlib import Path
 from .prepare_data import prepare_full_dataset
 from .finetune import finetune_yolo, finetune_with_config
+from .dino_vit_compare import run_suite as run_dino_vit_suite
+from .dino_vidt_compare import run_suite as run_dino_vidt_suite
+from .vidt_poultry import run_training as run_vidt_poultry
 
 def main():
     parser = argparse.ArgumentParser(description="Downstream Fine-tuning for Poultry House Detection")
     parser.add_argument("--config", type=str, help="Path to YAML config file for training")
+    parser.add_argument("--dino-vit-compare", action="store_true", help="Run the 9-experiment DINO ViT-Base downstream comparison suite")
+    parser.add_argument("--dino-vidt-compare", action="store_true", help="Run the 9-experiment DINO ViDT+ downstream comparison suite")
+    parser.add_argument("--train-vidt", action="store_true", help="Run standalone ViDT+ fine-tuning on poultry houses")
+    parser.add_argument("--dry-run", action="store_true", help="Run 1 epoch/batch per experiment to verify pipeline correctness")
     parser.add_argument("--train-dir", type=str, default="Data/poultry_houses_Training", help="Directory containing the training dataset")
     parser.add_argument("--test-dir", type=str, default="Data/poultry_houses_test", help="Directory containing the test dataset")
     parser.add_argument("--val-split", type=float, default=0.1, help="Fraction of training data to use for validation")
@@ -18,6 +25,24 @@ def main():
     parser.add_argument("--skip-prepare", action="store_true", help="Skip data preparation")
     
     args = parser.parse_args()
+
+    if args.dino_vit_compare:
+        config_file = args.config or "configs/dino_vit_downstream_compare.yaml"
+        print(f"Starting DINO ViT-Base 9-experiment comparison suite with config: {config_file}...")
+        run_dino_vit_suite(config_file, dry_run=args.dry_run)
+        return
+
+    if args.dino_vidt_compare:
+        config_file = args.config or "configs/dino_vit_downstream_compare.yaml"
+        print(f"Starting DINO ViDT+ 9-experiment comparison suite with config: {config_file}...")
+        run_dino_vidt_suite(config_file, dry_run=args.dry_run)
+        return
+
+    if args.train_vidt:
+        config_file = args.config or "configs/vidt_poultry_standalone.yaml"
+        print(f"Starting standalone ViDT+ training with config: {config_file}...")
+        run_vidt_poultry(config_file, dry_run=args.dry_run)
+        return
 
     if args.config:
         print(f"Starting config-based training with {args.config}...")

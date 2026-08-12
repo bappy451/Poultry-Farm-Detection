@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any
 
 import cv2
+import matplotlib
+matplotlib.use("Agg")  # Use thread-safe non-interactive backend to prevent Tk/Tcl crashes
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -94,6 +96,10 @@ def compute_cosine_similarity_maps(
             # If [B, D, H_patch, W_patch], convert to [B, N_patches, D]
             features = features.flatten(2).transpose(1, 2)
 
+    # Ensure features are in float32 for SVD, F.interpolate, and NumPy compatibility
+    # (prevents 'Got unsupported ScalarType BFloat16' when models are trained in bf16/fp16)
+    features = features.float()
+
     # Normalize patch embeddings to unit sphere for cosine similarity
     features_norm = F.normalize(features[0], p=2, dim=-1)  # [N_patches, D]
     num_patches, feat_dim = features_norm.shape
@@ -119,7 +125,7 @@ def compute_cosine_similarity_maps(
     cosine_sim_grid = cosine_sim.reshape(1, 1, grid_h, grid_w)
     cosine_sim_upsampled = F.interpolate(
         cosine_sim_grid, size=(h, w), mode="bilinear", align_corners=False
-    ).squeeze().cpu().numpy()
+    ).squeeze().cpu().float().numpy()
 
     # 2. Mean Cosine Similarity / Structural Salience Map (similarity against global average feature)
     mean_vec = F.normalize(spatial_tokens.mean(dim=0), p=2, dim=-1)
@@ -127,7 +133,7 @@ def compute_cosine_similarity_maps(
     salience_grid = salience_sim.reshape(1, 1, grid_h, grid_w)
     salience_upsampled = F.interpolate(
         salience_grid, size=(h, w), mode="bilinear", align_corners=False
-    ).squeeze().cpu().numpy()
+    ).squeeze().cpu().float().numpy()
 
     # 3. PCA Feature Segmentation Map (Top 3 Principal Components mapped to RGB)
     # Perform PCA on spatial tokens [N, D]
@@ -143,7 +149,7 @@ def compute_cosine_similarity_maps(
         pca_grid = pca_features.reshape(1, grid_h, grid_w, 3).permute(0, 3, 1, 2)  # [1, 3, grid_h, grid_w]
         pca_upsampled = F.interpolate(
             pca_grid, size=(h, w), mode="bilinear", align_corners=False
-        ).squeeze().permute(1, 2, 0).cpu().numpy()
+        ).squeeze().permute(1, 2, 0).cpu().float().numpy()
     except Exception:
         pca_upsampled = np.zeros((h, w, 3), dtype=np.float32)
 

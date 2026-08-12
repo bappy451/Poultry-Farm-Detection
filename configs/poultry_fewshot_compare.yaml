@@ -1,0 +1,56 @@
+# poultry_fewshot_compare.yaml
+# ===============================
+# Configuration for comparing three YOLO11l-OBB models on a 10% subset of the poultry dataset.
+
+paths:
+  spark_backbone_pt: "runs/spark_pretrain_yolo11l/backbone_dense_ep299.pt"
+  data_yaml: "configs/poultry_80_10_10.yaml"
+  output_dir: "runs/poultry_fewshot_compare"
+repeats: 3
+
+training:
+  epochs: 50             
+  fraction: 0.1          # CRITICAL: Only use 10% of the training data
+  imgsz: 640
+  batch: 16
+  device: 0              
+  optimizer: "AdamW"
+  lr0: 0.001
+  lrf: 0.01              
+  warmup_epochs: 3
+  cos_lr: true
+  weight_decay: 0.0005
+  momentum: 0.937
+  hsv_h: 0.015
+  hsv_s: 0.7
+  hsv_v: 0.4
+  degrees: 15.0
+  flipud: 0.5
+  fliplr: 0.5
+  mosaic: 1.0
+  close_mosaic: 10
+  amp: true
+  workers: 8
+  verbose: true
+  exist_ok: true
+  plots: true
+
+lpft_llrd:
+  lp_epochs: 5           
+  layer_decay: 0.75      
+
+experiments:
+  - name: "imagenet_baseline"
+    use_spark: false
+    is_random: false
+    use_lpft_llrd: false
+
+  - name: "random_init"
+    use_spark: false
+    is_random: true
+    use_lpft_llrd: false
+
+  - name: "spark_scratch_lpft"
+    use_spark: true
+    is_random: false
+    use_lpft_llrd: true

@@ -11,7 +11,7 @@ from poultry_geo.models import BandAdapter
 
 def calculate_spark_loss(reconstructed: torch.Tensor, original: torch.Tensor, mask: torch.Tensor, patch_size: int = 16) -> torch.Tensor:
     """
-    Computes the L1 (Mean Absolute Error) reconstruction loss with 
+    Computes the Mean Squared Error (MSE) reconstruction loss with 
     Patch-wise Normalization, restricted exclusively to the masked pixel regions.
     
     Args:
@@ -41,9 +41,9 @@ def calculate_spark_loss(reconstructed: torch.Tensor, original: torch.Tensor, ma
     orig_var = orig_patches.var(dim=2, unbiased=False, keepdim=True)
     orig_patches_norm = (orig_patches - orig_mean) / (orig_var + 1e-6).sqrt()
     
-    # L1 Loss between reconstructed patches and NORMALIZED original patches
+    # MSE (L2) Loss between reconstructed patches and NORMALIZED original patches
     # Average over C and P*P dimensions to get [B, L]
-    loss_patches = (recon_patches - orig_patches_norm).abs().mean(dim=(1, 2))
+    loss_patches = (recon_patches - orig_patches_norm).pow(2).mean(dim=(1, 2))
     
     # Pool mask down to patch level: [B, L]
     mask_patches = F.avg_pool2d(mask.float(), kernel_size=patch_size, stride=patch_size).view(mask.shape[0], -1)
@@ -60,24 +60,6 @@ def translate_state_dict(sparse_state_dict: Dict[str, torch.Tensor], backbone_ty
     dense_state_dict = {}
     is_yolo = "yolo" in backbone_type.lower()
     
-    yolo_mapping = {
-        "stem.weight": "model.0.conv.weight",
-        "stem.ln.weight": "model.0.bn.weight",
-        "stem.ln.bias": "model.0.bn.bias",
-        "stage1.0.weight": "model.1.conv.weight",
-        "stage1.1.ln.weight": "model.1.bn.weight",
-        "stage1.1.ln.bias": "model.1.bn.bias",
-        "stage2.0.weight": "model.3.conv.weight",
-        "stage2.1.ln.weight": "model.3.bn.weight",
-        "stage2.1.ln.bias": "model.3.bn.bias",
-        "stage3.0.weight": "model.5.conv.weight",
-        "stage3.1.ln.weight": "model.5.bn.weight",
-        "stage3.1.ln.bias": "model.5.bn.bias",
-        "stage4.0.weight": "model.7.conv.weight",
-        "stage4.1.ln.weight": "model.7.bn.weight",
-        "stage4.1.ln.bias": "model.7.bn.bias",
-    }
-    
     for key, value in sparse_state_dict.items():
         new_key = key
         
@@ -85,8 +67,11 @@ def translate_state_dict(sparse_state_dict: Dict[str, torch.Tensor], backbone_ty
             new_key = new_key.replace('encoder.', '', 1)
             
         if is_yolo:
-            if new_key in yolo_mapping:
-                dense_state_dict[yolo_mapping[new_key]] = value
+            if new_key.startswith('backbone_layers.'):
+                new_key = new_key.replace('backbone_layers.', 'model.', 1)
+            if '.ln.' in new_key:
+                new_key = new_key.replace('.ln.', '.')
+            dense_state_dict[new_key] = value
             continue
             
         # ResNet naming: 'stageX' -> 'layerX'
@@ -165,7 +150,7 @@ def train_one_step(model, optimizer, scaler, transformer, batch, config):
         
     return loss.item()
 
-def save_spark_checkpoint(model, config, path, epoch):
+def save_spark_checkpoint(model, optimizer, scaler, config, path, epoch):
     """
     Saves both the full training checkpoint and a 'translated' dense backbone.
     
@@ -173,12 +158,57 @@ def save_spark_checkpoint(model, config, path, epoch):
     or Timm models as a pretrained weights file.
     """
     # 1. Save the full SparK network (for resuming pretraining)
-    torch.save({
+    unified_path = os.path.join(path, f'spark_unified_ep{epoch}.pt')
+    latest_path = os.path.join(path, 'spark_unified_latest.pt')
+    
+    checkpoint_state = {
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'scaler_state_dict': scaler.state_dict() if scaler is not None else None,
         'config': vars(config)
-    }, os.path.join(path, f'spark_unified_ep{epoch}.pt'))
+    }
+    torch.save(checkpoint_state, unified_path)
+    
+    import shutil
+    shutil.copyfile(unified_path, latest_path)
     
     # 2. Save the extracted dense backbone weights (for downstream tasks)
     dense_backbone_state = translate_state_dict(model.encoder.state_dict(), config.backbone_type)
     torch.save(dense_backbone_state, os.path.join(path, f'backbone_dense_ep{epoch}.pt'))
+
+def save_spark_visualization(original: torch.Tensor, mask: torch.Tensor, reconstructed: torch.Tensor, output_path: str):
+    """
+    Saves a debugging visualization grid of Original vs Masked vs Reconstructed.
+    """
+    import torchvision.utils as vutils
+    
+    # original is [B, 3, H, W]
+    # mask is [B, 1, H, W] where 1 = masked, 0 = visible
+    # reconstructed is [B, 3, H, W]
+    
+    # Denormalize assuming ImageNet mean/std for visualization if needed, or assume [0,1]
+    # If adapted images are normalized, we approximate min/max scaling per image.
+    
+    def norm_tensor(t):
+        t = t.clone()
+        for b in range(t.size(0)):
+            t[b] -= t[b].min()
+            t[b] /= (t[b].max() + 1e-5)
+        return t
+        
+    orig_norm = norm_tensor(original)
+    recon_norm = norm_tensor(reconstructed)
+    
+    # Expand mask to 3 channels for overlay
+    mask_3c = mask.repeat(1, 3, 1, 1)
+    
+    # Masked input: original but with masked regions grayed out
+    masked_input = orig_norm.clone()
+    masked_input[mask_3c == 1] = 0.5  # Gray color
+    
+    # Create grid: [Orig, Masked, Recon]
+    combined = torch.cat([orig_norm, masked_input, recon_norm], dim=0)
+    
+    vutils.save_image(combined, output_path, nrow=orig_norm.size(0), normalize=False, padding=2)
+

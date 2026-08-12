@@ -595,7 +595,7 @@ class RemoteSensingViT(nn.Module):
         outputs = tokens
         for block in self.blocks:
             if self.gradient_checkpointing and self.training:
-                outputs = checkpoint_utils.checkpoint(block, outputs)
+                outputs = checkpoint_utils.checkpoint(block, outputs, use_reentrant=False)
             else:
                 outputs = block(outputs)
         outputs = self.norm(outputs)

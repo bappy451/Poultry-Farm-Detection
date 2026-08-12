@@ -4,106 +4,90 @@
 \providecommand\HyField@AuxAddToCoFields[2]{}
 \Newlabel{inst1}{a}
 \citation{robinson2021mapping}
-\citation{wang2022empirical,ghanbarzade2023,guo2024skysense}
-\citation{sun2023ringmo,wang2023fgmae,lin2023ssmae,zhang2023ctxmim,zhang2023ocmim}
-\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{2}{section.1}\protected@file@percent }
-\newlabel{sec:intro}{{1}{2}{Introduction}{section.1}{}}
-\citation{robinson2021mapping}
-\citation{li2020greenhouse}
-\@writefile{toc}{\contentsline {section}{\numberline {2}Literature review}{3}{section.2}\protected@file@percent }
-\newlabel{sec:literature}{{2}{3}{Literature review}{section.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Agricultural infrastructure mapping from aerial imagery}{3}{subsection.2.1}\protected@file@percent }
-\newlabel{subsec:agri_mapping}{{2.1}{3}{Agricultural infrastructure mapping from aerial imagery}{subsection.2.1}{}}
+\citation{jocher2023ultralytics}
+\citation{dosovitskiy2020image}
 \citation{wang2022empirical}
-\citation{sun2023ringmo}
+\citation{ghanbarzade2023}
+\citation{lu2025vision,choudhury2025mimrs}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction: The Foundation Model Hype}{2}{section.1}\protected@file@percent }
+\newlabel{sec:intro}{{1}{2}{Introduction: The Foundation Model Hype}{section.1}{}}
 \citation{guo2024skysense}
-\citation{bao2021beit}
+\citation{wang2025macon}
+\citation{jain2022multimodal}
+\citation{liu2026systematic}
+\citation{he2022masked}
+\citation{choudhury2025mimrs}
+\citation{cong2022satmae}
+\citation{sun2023ringmo}
+\citation{reed2022scalemae}
+\citation{dong2024generative,wang2024scaling}
+\citation{fuller2023croma}
+\citation{li2023segmind}
+\citation{sosa2025multimae}
+\citation{zhang2023ctxmim,hackel2025csmoe,wang2023fgmae}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Related Work: Self-Supervision in Earth Observation}{3}{section.2}\protected@file@percent }
+\newlabel{sec:related_work}{{2}{3}{Related Work: Self-Supervision in Earth Observation}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Contrastive Pretraining}{3}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}The Rise of Masked Image Modeling (MIM)}{3}{subsection.2.2}\protected@file@percent }
 \citation{tian2023spark}
-\citation{wang2023fgmae}
-\citation{lin2023ssmae}
-\citation{zhang2023ctxmim}
-\citation{zhang2023ocmim}
-\citation{muhtar2023cmid,fuller2023croma}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}The natural-image domain gap and in-domain pretraining}{4}{subsection.2.2}\protected@file@percent }
-\newlabel{subsec:domain_gap}{{2.2}{4}{The natural-image domain gap and in-domain pretraining}{subsection.2.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}From masked image modeling to remote-sensing-specific SSL}{4}{subsection.2.3}\protected@file@percent }
-\newlabel{subsec:mim}{{2.3}{4}{From masked image modeling to remote-sensing-specific SSL}{subsection.2.3}{}}
-\citation{choudhury2025mimrs,lu2025survey}
-\citation{xia2017dota,ding2021dota}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Aerial detection benchmarks and the remaining gap}{5}{subsection.2.4}\protected@file@percent }
-\newlabel{subsec:gap}{{2.4}{5}{Aerial detection benchmarks and the remaining gap}{subsection.2.4}{}}
-\citation{xia2017dota,ding2021dota}
-\@writefile{toc}{\contentsline {section}{\numberline {3}Materials and methods}{6}{section.3}\protected@file@percent }
-\newlabel{sec:methods}{{3}{6}{Materials and methods}{section.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Study design}{6}{subsection.3.1}\protected@file@percent }
-\newlabel{subsec:study_design}{{3.1}{6}{Study design}{subsection.3.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Datasets}{6}{subsection.3.2}\protected@file@percent }
-\newlabel{subsec:datasets}{{3.2}{6}{Datasets}{subsection.3.2}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.2.1}Unlabeled NAIP pretraining data}{6}{subsubsection.3.2.1}\protected@file@percent }
-\newlabel{subsubsec:naip}{{3.2.1}{6}{Unlabeled NAIP pretraining data}{subsubsection.3.2.1}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.2.2}Downstream evaluation tasks}{6}{subsubsection.3.2.2}\protected@file@percent }
-\newlabel{subsubsec:downstream}{{3.2.2}{6}{Downstream evaluation tasks}{subsubsection.3.2.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Masked image modeling with SparK}{6}{subsection.3.3}\protected@file@percent }
-\newlabel{subsec:spark}{{3.3}{6}{Masked image modeling with SparK}{subsection.3.3}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Characteristics of the pretraining and downstream evaluation datasets.}}{7}{table.caption.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Materials and Methods: The Empirical Design}{4}{section.3}\protected@file@percent }
+\newlabel{sec:methods}{{3}{4}{Materials and Methods: The Empirical Design}{section.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces [PLACEHOLDER: Please insert an architecture flowchart illustrating the experimental pipeline: the 1.5TB NAIP dataset $\rightarrow $ SparK Masked Reconstruction $\rightarrow $ YOLO11-OBB Detector $\rightarrow $ LP-FT + LLRD Transfer Protocol.]}}{4}{figure.caption.1}\protected@file@percent }
 \providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
-\newlabel{tab:dataset_chars}{{1}{7}{Characteristics of the pretraining and downstream evaluation datasets}{table.caption.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Downstream detector and experimental protocol}{7}{subsection.3.4}\protected@file@percent }
-\newlabel{subsec:detector}{{3.4}{7}{Downstream detector and experimental protocol}{subsection.3.4}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Training convergence for the SparK-pretrained backbone during downstream fine-tuning.}}{8}{figure.caption.2}\protected@file@percent }
-\newlabel{fig:convergence}{{1}{8}{Training convergence for the SparK-pretrained backbone during downstream fine-tuning}{figure.caption.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Evaluation metrics}{8}{subsection.3.5}\protected@file@percent }
-\newlabel{subsec:metrics}{{3.5}{8}{Evaluation metrics}{subsection.3.5}{}}
-\citation{sun2023ringmo,guo2024skysense,lu2025survey}
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Downstream fine-tuning configuration.}}{9}{table.caption.3}\protected@file@percent }
-\newlabel{tab:hyperparams}{{2}{9}{Downstream fine-tuning configuration}{table.caption.3}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {4}Results}{9}{section.4}\protected@file@percent }
-\newlabel{sec:results}{{4}{9}{Results}{section.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Full-data transfer across detection tasks}{9}{subsection.4.1}\protected@file@percent }
-\newlabel{subsec:full_results}{{4.1}{9}{Full-data transfer across detection tasks}{subsection.4.1}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Full-data downstream performance across initialization strategies. Boldface indicates the best performance for each task.}}{10}{table.caption.4}\protected@file@percent }
-\newlabel{tab:full_results}{{3}{10}{Full-data downstream performance across initialization strategies. Boldface indicates the best performance for each task}{table.caption.4}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Poultry detection performance when only 10\% of the training data were used.}}{10}{table.caption.6}\protected@file@percent }
-\newlabel{tab:fewshot_results}{{4}{10}{Poultry detection performance when only 10\% of the training data were used}{table.caption.6}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Label-scarcity ablation}{10}{subsection.4.2}\protected@file@percent }
-\newlabel{subsec:fewshot}{{4.2}{10}{Label-scarcity ablation}{subsection.4.2}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Validation mAP@0.5 across the three downstream tasks for ImageNet and SparK-NAIP initialization.}}{11}{figure.caption.5}\protected@file@percent }
-\newlabel{fig:cross_dataset}{{2}{11}{Validation mAP@0.5 across the three downstream tasks for ImageNet and SparK-NAIP initialization}{figure.caption.5}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {5}Discussion}{11}{section.5}\protected@file@percent }
-\newlabel{sec:discussion}{{5}{11}{Discussion}{section.5}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}What the experiments establish}{11}{subsection.5.1}\protected@file@percent }
-\newlabel{subsec:what_established}{{5.1}{11}{What the experiments establish}{subsection.5.1}{}}
-\citation{sun2023ringmo,wang2023fgmae,lin2023ssmae}
-\citation{zhang2023ctxmim,zhang2023ocmim}
-\citation{fuller2023croma,muhtar2023cmid}
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Effect of labeled-data fraction and initialization on poultry detection performance.}}{12}{figure.caption.7}\protected@file@percent }
-\newlabel{fig:data_efficiency}{{3}{12}{Effect of labeled-data fraction and initialization on poultry detection performance}{figure.caption.7}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Relation to prior work}{12}{subsection.5.2}\protected@file@percent }
-\newlabel{subsec:prior_work}{{5.2}{12}{Relation to prior work}{subsection.5.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Operational implications}{13}{subsection.5.3}\protected@file@percent }
-\newlabel{subsec:operations}{{5.3}{13}{Operational implications}{subsection.5.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Limitations and future work}{13}{subsection.5.4}\protected@file@percent }
-\newlabel{subsec:limitations}{{5.4}{13}{Limitations and future work}{subsection.5.4}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{13}{section.6}\protected@file@percent }
-\newlabel{sec:conclusion}{{6}{13}{Conclusion}{section.6}{}}
+\newlabel{fig:architecture}{{1}{4}{[PLACEHOLDER: Please insert an architecture flowchart illustrating the experimental pipeline: the 1.5TB NAIP dataset $\rightarrow $ SparK Masked Reconstruction $\rightarrow $ YOLO11-OBB Detector $\rightarrow $ LP-FT + LLRD Transfer Protocol.]}{figure.caption.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}The Pretraining Paradigm: Masked Image Modeling on NAIP Imagery}{4}{subsection.3.1}\protected@file@percent }
+\newlabel{subsec:pretraining}{{3.1}{4}{The Pretraining Paradigm: Masked Image Modeling on NAIP Imagery}{subsection.3.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Target Domains: Agricultural Infrastructure Datasets}{4}{subsection.3.2}\protected@file@percent }
+\newlabel{subsec:datasets}{{3.2}{4}{Target Domains: Agricultural Infrastructure Datasets}{subsection.3.2}{}}
+\citation{xia2018dota}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Downstream Transfer and Statistical Rigor}{5}{subsection.3.3}\protected@file@percent }
+\newlabel{subsec:transfer}{{3.3}{5}{Downstream Transfer and Statistical Rigor}{subsection.3.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Experimental Results and Analysis: The Reality of Domain-Specific SSL}{5}{section.4}\protected@file@percent }
+\newlabel{sec:results}{{4}{5}{Experimental Results and Analysis: The Reality of Domain-Specific SSL}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Full-Data Evaluation: Negligible Gains from 1.5TB of Pretraining}{5}{subsection.4.1}\protected@file@percent }
+\newlabel{subsec:full_results}{{4.1}{5}{Full-Data Evaluation: Negligible Gains from 1.5TB of Pretraining}{subsection.4.1}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Baseline Performance (100\% Training Data). Results are presented as the Mean $\pm $ StdDev across 3 independent initialization seeds. Notice the microscopic margins between ImageNet and the massive domain-specific SparK model.}}{6}{table.caption.2}\protected@file@percent }
+\newlabel{tab:full_results}{{1}{6}{Baseline Performance (100\% Training Data). Results are presented as the Mean $\pm $ StdDev across 3 independent initialization seeds. Notice the microscopic margins between ImageNet and the massive domain-specific SparK model}{table.caption.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Downstream Detection Performance (mAP@0.5) utilizing 100\% of the training labels. The parity between off-the-shelf ImageNet and the 1.5TB SparK model is highly evident.}}{6}{figure.caption.3}\protected@file@percent }
+\newlabel{fig:full_data_bar}{{2}{6}{Downstream Detection Performance (mAP@0.5) utilizing 100\% of the training labels. The parity between off-the-shelf ImageNet and the 1.5TB SparK model is highly evident}{figure.caption.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Label-Scarcity Stress Test: The Failure of Domain Purity}{7}{subsection.4.2}\protected@file@percent }
+\newlabel{subsec:fewshot}{{4.2}{7}{Label-Scarcity Stress Test: The Failure of Domain Purity}{subsection.4.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces [PLACEHOLDER: Please insert qualitative visual comparisons showing the model predictions under 10\% data conditions. Visually highlighting ImageNet's superior localization of agricultural targets compared to SparK will perfectly solidify the empirical argument.]}}{7}{figure.caption.4}\protected@file@percent }
+\newlabel{fig:qualitative}{{3}{7}{[PLACEHOLDER: Please insert qualitative visual comparisons showing the model predictions under 10\% data conditions. Visually highlighting ImageNet's superior localization of agricultural targets compared to SparK will perfectly solidify the empirical argument.]}{figure.caption.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Label-Scarcity Ablation (10\% Training Data). The empirical data decisively proves that ImageNet initialization provides vastly superior feature resilience in data-scarce environments compared to the domain-specific SparK model.}}{8}{table.caption.5}\protected@file@percent }
+\newlabel{tab:fewshot_results}{{2}{8}{Label-Scarcity Ablation (10\% Training Data). The empirical data decisively proves that ImageNet initialization provides vastly superior feature resilience in data-scarce environments compared to the domain-specific SparK model}{table.caption.5}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Performance under extreme label scarcity (10\% data). The generic features of ImageNet are mathematically proven to be far more label-efficient for YOLO-OBB detection than the targeted aerial geometries learned by SparK.}}{8}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:fewshot_data_bar}{{4}{8}{Performance under extreme label scarcity (10\% data). The generic features of ImageNet are mathematically proven to be far more label-efficient for YOLO-OBB detection than the targeted aerial geometries learned by SparK}{figure.caption.6}{}}
 \bibstyle{elsarticle-harv}
 \bibdata{refs}
-\bibcite{bao2021beit}{{1}{2021}{{Bao et~al.}}{{Bao, Dong and Wei}}}
-\bibcite{choudhury2025mimrs}{{2}{2025}{{Choudhury et~al.}}{{Choudhury, Vasim, Schmitt and Banerjee}}}
-\bibcite{ding2021dota}{{3}{2021}{{Ding et~al.}}{{Ding, Xue, Xia, Bai, Yang, Yang, Belongie, Luo, Datcu, Pelillo and Zhang}}}
-\bibcite{fuller2023croma}{{4}{2023}{{Fuller et~al.}}{{Fuller, Millard and Green}}}
-\bibcite{ghanbarzade2023}{{5}{2023}{{Ghanbarzade and Soleimani}}{{}}}
-\bibcite{guo2024skysense}{{6}{2024}{{Guo et~al.}}{{Guo, Lao, Dang, Zhang, Yu, Ru, Zhong, Huang, Wu, Hu, He, Wang, Chen, Yang, Zhang and Li}}}
-\bibcite{li2020greenhouse}{{7}{2020}{{Li et~al.}}{{Li, Zhang, Lei, Wang and Guo}}}
-\bibcite{lin2023ssmae}{{8}{2023}{{Lin et~al.}}{{Lin, Gao, Shi, Dong and Du}}}
-\bibcite{lu2025survey}{{9}{2025}{{Lu et~al.}}{{Lu, Guo, Zimmer-Dauphinee, Nieusma, Wang, VanValkenburgh, Wernke and Huo}}}
-\bibcite{muhtar2023cmid}{{10}{2023}{{Muhtar et~al.}}{{Muhtar, Zhang, Xiao, Li and Gu}}}
-\bibcite{robinson2021mapping}{{11}{2021}{{Robinson et~al.}}{{Robinson, Chugg, Anderson, Ferres and Ho}}}
-\bibcite{sun2023ringmo}{{12}{2023}{{Sun et~al.}}{{Sun, Wang, Lu, Zhu, Lu, He, Li, Rong, Yang, Chang, He, Yang, Wang, Lu and Fu}}}
-\bibcite{tian2023spark}{{13}{2023}{{Tian et~al.}}{{Tian, Jiang, Diao, Lin, Wang and Yuan}}}
-\bibcite{wang2022empirical}{{14}{2022}{{Wang et~al.}}{{Wang, Zhang, Du, Xia and Tao}}}
-\bibcite{wang2023fgmae}{{15}{2023}{{Wang et~al.}}{{Wang, Hern{\'a}ndez, Albrecht and Zhu}}}
-\bibcite{xia2017dota}{{16}{2017}{{Xia et~al.}}{{Xia, Bai, Ding, Zhu, Belongie, Luo, Datcu, Pelillo and Zhang}}}
-\bibcite{zhang2023ctxmim}{{17}{2023a}{{Zhang et~al.}}{{Zhang, Liu and Wang}}}
-\bibcite{zhang2023ocmim}{{18}{2023b}{{Zhang et~al.}}{{Zhang, Zhuang, Chen, Chen, Wang, Gao and Dong}}}
-\gdef \@abspage@last{17}
+\bibcite{choudhury2025mimrs}{{1}{2025}{{Choudhury et~al.}}{{Choudhury, Vasim, Schmitt and Banerjee}}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Discussion: Re-evaluating the Foundation Model Paradigm}{9}{section.5}\protected@file@percent }
+\newlabel{sec:discussion}{{5}{9}{Discussion: Re-evaluating the Foundation Model Paradigm}{section.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{9}{section.6}\protected@file@percent }
+\newlabel{sec:conclusion}{{6}{9}{Conclusion}{section.6}{}}
+\bibcite{cong2022satmae}{{2}{2022}{{Cong et~al.}}{{Cong, Khanna, Meng, Liu, Rozi, He, Burke, Lobell and Ermon}}}
+\bibcite{dong2024generative}{{3}{2024}{{Dong et~al.}}{{Dong, Gu and Liu}}}
+\bibcite{dosovitskiy2020image}{{4}{2020}{{Dosovitskiy et~al.}}{{Dosovitskiy, Beyer, Kolesnikov, Weissenborn, Zhai, Unterthiner, Dehghani, Minderer, Heigold, Gelly et~al.}}}
+\bibcite{fuller2023croma}{{5}{2024}{{Fuller et~al.}}{{Fuller, Millard and Green}}}
+\bibcite{ghanbarzade2023}{{6}{2023}{{Ghanbarzade et~al.}}{{}}}
+\bibcite{guo2024skysense}{{7}{2024}{{Guo et~al.}}{{Guo, Lao, Dang, Zhang, Yu, Ru, Zhong, Huang, Wu, Hu et~al.}}}
+\bibcite{hackel2025csmoe}{{8}{2025}{{Hackel et~al.}}{{Hackel, Burgert and Demir}}}
+\bibcite{he2022masked}{{9}{2022}{{He et~al.}}{{He, Chen, Xie, Li, Doll{\'a}r and Girshick}}}
+\bibcite{jain2022multimodal}{{10}{2022}{{Jain et~al.}}{{Jain, Wilson and Gulshan}}}
+\bibcite{jocher2023ultralytics}{{11}{2023}{{Jocher et~al.}}{{Jocher, Chaurasia, Stoken, Borovec, Nano, Michael, TaoXie, Fang, imyhxy, Lorna et~al.}}}
+\bibcite{li2023segmind}{{12}{2023}{{Li et~al.}}{{Li, Chen, Wu, Li and Jing}}}
+\bibcite{liu2026systematic}{{13}{2026}{{Liu et~al.}}{{Liu, Zhu, Mi, Yang, Meng, Zhao and Gu}}}
+\bibcite{lu2025vision}{{14}{2025}{{Lu et~al.}}{{Lu, Guo, Zimmer-Dauphinee, Nieusma, Wang, VanValkenburgh, Wernke and Huo}}}
+\bibcite{nedungadi2024mmearth}{{15}{2024}{{Nedungadi et~al.}}{{Nedungadi, Kariryaa, Oehmcke, Belongie, Igel and Lang}}}
+\bibcite{reed2022scalemae}{{16}{2023}{{Reed et~al.}}{{Reed, Gupta, Li, Brockman, Funk, Clipp, Candido, Uyttendaele and Darrell}}}
+\bibcite{robinson2021mapping}{{17}{2021}{{Robinson et~al.}}{{}}}
+\bibcite{sosa2025multimae}{{18}{2025}{{Sosa et~al.}}{{Sosa, Rukhovich, Kacem and Aouada}}}
+\bibcite{sun2023ringmo}{{19}{2022}{{Sun et~al.}}{{Sun, Wang, Lu, Zhu, Lu, He, Li, Rong, Yang, Chang et~al.}}}
+\bibcite{tian2023spark}{{20}{2023}{{Tian et~al.}}{{Tian, Jiang, Diao, Lin, Wang and Yuan}}}
+\bibcite{wang2022empirical}{{21}{2022}{{Wang et~al.}}{{Wang, Zhang, Xu, Zhang, Du, Tao and Zhang}}}
+\bibcite{wang2024scaling}{{22}{2024a}{{Wang et~al.}}{{Wang, Wang, Wang, Guo, Zhong, Lan, Zhang, Liu and Sun}}}
+\bibcite{wang2025macon}{{23}{2025}{{Wang et~al.}}{{Wang, Yan, Yang, Xie, Yuan, Wei, Gao, Zhang and Atkinson}}}
+\bibcite{wang2023fgmae}{{24}{2024b}{{Wang et~al.}}{{Wang, Hern{\'a}ndez, Albrecht and Zhu}}}
+\bibcite{xia2018dota}{{25}{2018}{{Xia et~al.}}{{Xia, Bai, Ding, Zhu, Belongie, Luo, Datcu, Pelillo and Zhang}}}
+\bibcite{zhang2023ctxmim}{{26}{2023}{{Zhang et~al.}}{{Zhang, Liu and Wang}}}
+\gdef \@abspage@last{13}

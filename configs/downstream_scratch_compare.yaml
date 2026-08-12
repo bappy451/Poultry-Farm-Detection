@@ -15,9 +15,10 @@
 #       with alpha = layer_decay, protecting early visual representations.
 
 paths:
-  spark_backbone_pt: "trained_models/spark-scratch/af8e64a7ed89_yolo11l_fp16/backbone_dense_ep299.pt"
-  data_yaml: "configs/poultry_obb.yaml"
+  spark_backbone_pt: "runs/spark_pretrain_yolo11l/backbone_dense_ep299.pt"
+  data_yaml: "configs/poultry_80_10_10.yaml"
   output_dir: "runs/downstream_scratch"
+repeats: 3
 
 training:
   epochs: 50             # 50-epoch budget for data/compute efficiency comparison
@@ -60,7 +61,7 @@ experiments:
     is_random: true
     use_lpft_llrd: false
 
-  - name: "spark_scratch_lpft"
+  - name: "spark_scratch_lpft_300ep"
     use_spark: true
     is_random: false
     use_lpft_llrd: true
