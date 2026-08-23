@@ -18,7 +18,7 @@ models:
     type: "yolo"
     base_yolo: "yolo11l-seg.pt"
     pretrained_weights: "C:/Users/mza0288/Documents/Poultry-Farm-Detection/trained_models/spark-search/6b3159be77eb_yolo11l_fp16/model_checkpoint.pt"
-    is_spark: true
+    is_spark: true`n    enabled: false  # Disabled: no verified SparK-to-YOLO transfer adapter exists.
 
   - name: "yolo11l_random"
     type: "yolo"
@@ -90,18 +90,16 @@ models:
     type: "yolo"
     base_yolo: "yolo26l-seg.pt"
     pretrained_weights: "C:/Users/mza0288/Documents/Poultry-Farm-Detection/trained_models/spark-search/9fdad2750c45_yolov26l_fp16/model_checkpoint.pt"
-    is_spark: true
+    is_spark: true`n    enabled: false  # Disabled: no verified SparK-to-YOLO transfer adapter exists.
     is_random: false
-    
+
   - name: "yolo26l_random"
     type: "yolo"
     base_yolo: "yolo26l-seg.yaml"
     pretrained_weights: null
     is_spark: false
     is_random: true
-    
+
   - name: "yolo26l_coco"
     type: "yolo"
     base_yolo: "yolo26l-seg.pt"
-
-  

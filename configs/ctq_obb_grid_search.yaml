@@ -1,0 +1,102 @@
+# Validation-only loss search for detector-level EMA pseudo-OBB adaptation.
+# The external test set is deliberately absent: it must be used only after a
+# winning setting is locked. Paths are resolved relative to the repository.
+data: configs/poultry_clean_label_subsets/poultry_clean_10percent.yaml
+unlabeled_root: 'E:\\NAIP_Dataset_PH\\MS_tiles_512_256_jpg'
+model: yolo11l-obb.pt
+output_dir: runs/ctq_obb_grid_search
+
+# Two seeds provide an economical screening stage. Re-run the winner with
+# `--seeds 7 24 42 --candidates <winner-id>` before final-test reporting.
+seeds: [7, 24]
+device: '0'
+fraction: 1.0
+
+# The baseline is trained once per seed, then each adaptation candidate starts
+# from that seed's baseline checkpoint. This stabilizes teacher pseudo labels
+# and isolates the effect of the candidate loss configuration.
+baseline:
+  epochs: 100
+  lr0: 0.001
+  weight_decay: 0.0005
+
+training:
+  adapt_epochs: 60
+  finetune_epochs: 100
+  adapt_lr0: 0.0003
+  finetune_lr0: 0.001
+  batch: 16
+  unlabeled_batch: 16
+  imgsz: 640
+  unlabeled_imgsz: 448
+  workers: 12
+  unlabeled_workers: 2
+  unlabeled_limit: 250000
+  prefetch_factor: 2
+  ema_decay: 0.9998
+
+# Each candidate is a controlled ablation of the supplied recommendations.
+# Pseudo thresholds are intentionally high because pilots show sparse, noisy
+# pseudo labels. Do not combine KLD/GWD/KFIoU without a native per-target loss
+# implementation; Ultralytics' OBB criterion already uses ProbIoU + DFL.
+candidates:
+  - id: pseudo_precision_025
+    loss_family: pseudo_obb
+    pseudo_obb_weight: 0.025
+    pseudo_thresholds: '0.93,0.93'
+    pseudo_iou_threshold: 0.50
+    pseudo_class_margin: 0.05
+    pseudo_warmup_epochs: 5
+    pseudo_rampup_epochs: 10
+    feature_consistency_weight: 0.0
+  - id: pseudo_balanced_025
+    loss_family: pseudo_obb
+    pseudo_obb_weight: 0.025
+    pseudo_thresholds: '0.90,0.90'
+    pseudo_iou_threshold: 0.50
+    pseudo_class_margin: 0.05
+    pseudo_warmup_epochs: 5
+    pseudo_rampup_epochs: 10
+    feature_consistency_weight: 0.0
+  - id: pseudo_precision_050
+    loss_family: pseudo_obb
+    pseudo_obb_weight: 0.05
+    pseudo_thresholds: '0.93,0.93'
+    pseudo_iou_threshold: 0.50
+    pseudo_class_margin: 0.05
+    pseudo_warmup_epochs: 5
+    pseudo_rampup_epochs: 10
+    feature_consistency_weight: 0.0
+  - id: foreground_feature_010
+    loss_family: foreground_feature
+    pseudo_obb_weight: 0.0
+    pseudo_thresholds: '0.90,0.90'
+    pseudo_iou_threshold: 0.50
+    pseudo_class_margin: 0.05
+    pseudo_warmup_epochs: 5
+    pseudo_rampup_epochs: 10
+    feature_consistency_weight: 0.01
+    feature_rampup_epochs: 10
+    foreground_feature_gain: 3.0
+  - id: combined_precision_025
+    loss_family: pseudo_obb_plus_foreground_feature
+    pseudo_obb_weight: 0.025
+    pseudo_thresholds: '0.93,0.93'
+    pseudo_iou_threshold: 0.50
+    pseudo_class_margin: 0.05
+    pseudo_warmup_epochs: 5
+    pseudo_rampup_epochs: 10
+    feature_consistency_weight: 0.01
+    feature_rampup_epochs: 10
+    foreground_feature_gain: 3.0
+  - id: combined_balanced_025
+    loss_family: pseudo_obb_plus_foreground_feature
+    pseudo_obb_weight: 0.025
+    pseudo_thresholds: '0.90,0.90'
+    pseudo_iou_threshold: 0.50
+    pseudo_class_margin: 0.05
+    pseudo_warmup_epochs: 5
+    pseudo_rampup_epochs: 10
+    feature_consistency_weight: 0.01
+    feature_rampup_epochs: 10
+    foreground_feature_gain: 3.0

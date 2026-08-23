@@ -1,0 +1,54 @@
+protocol_name: ctq_al_ms_reliable_balanced_v1_validation_only
+data: configs/poultry_clean_label_subsets/poultry_clean_10percent.yaml
+unlabeled_root: E:/NAIP_Dataset_PH/MS_tiles_512_256_jpg
+unlabeled_catalog: .
+unlabeled_catalog_mode: root_scan
+model: yolo11l-obb.pt
+output_dir: runs/ctq_al_ms_v1/reliable_balanced_ctq_imgsz1024
+device: '0'
+seeds:
+- 7
+- 17
+- 42
+baseline:
+  epochs: 100
+  batch: 8
+  imgsz: 1024
+  workers: 12
+calibration:
+  iou_match: 0.5
+  precision_target: 0.9
+  min_predictions: 20
+  min_confidence: 0.75
+  max_confidence: 0.93
+  step: 0.01
+  fallback: 0.85
+adaptation:
+  epochs: 60
+  batch: 8
+  unlabeled_batch: 8
+  imgsz: 1024
+  unlabeled_imgsz: 704
+  workers: 12
+  unlabeled_workers: 12
+  pseudo_iou_threshold: 0.5
+  pseudo_class_margin: 0.05
+  pseudo_warmup_epochs: 5
+  pseudo_rampup_epochs: 10
+candidate:
+  quality_alpha: 1.0
+  pseudo_obb_weight: 0.01
+  teacher_jitter_views: 2
+  teacher_jitter_iou: 0.7
+  teacher_jitter_agreement: 1.0
+  pseudo_background_weight: 0.5
+  pseudo_class_weight_min: 0.5
+  pseudo_class_weight_max: 2.0
+resolution_selection:
+  source_ranking: C:\Users\mza0288\Documents\Poultry-Farm-Detection\runs\ctq_al_ms_v1\supervised_resolution\validation_ranking.csv
+  candidate_id: imgsz1024
+  imgsz: 1024
+  batch: 8
+  mean_best_val_map50_95: 0.8062333333333334
+  n_seeds: 3
+  selection_used_test: false

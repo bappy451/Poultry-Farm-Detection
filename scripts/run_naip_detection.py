@@ -1,8 +1,8 @@
-"""
+﻿"""
 run_naip_detection.py
 =====================
 Detect poultry farm buildings in NAIP GeoTIFF imagery using YOLO11l (COCO pretrained
-or fine-tuned). No segmentation / SAM — bounding-box detection only.
+or fine-tuned). No segmentation / SAM â€” bounding-box detection only.
 
 Output
 ------
@@ -36,7 +36,7 @@ import numpy as np
 import yaml
 
 # ---------------------------------------------------------------------------
-# Hard dependency checks — fail immediately with a clear message
+# Hard dependency checks â€” fail immediately with a clear message
 # ---------------------------------------------------------------------------
 try:
     import rasterio
@@ -83,10 +83,10 @@ def setup_logging(level_str: str = "INFO", log_file: Optional[str] = None) -> lo
     root = logging.getLogger()
     root.handlers.clear()
     logging.basicConfig(level=level, format=fmt, handlers=handlers)
-    
+
     # Suppress verbose GDAL/Rasterio ExtraSamples warnings
     logging.getLogger("rasterio").setLevel(logging.ERROR)
-    
+
     return logging.getLogger("naip_detection")
 
 
@@ -168,10 +168,10 @@ def generate_tiles(
 
 
 # ---------------------------------------------------------------------------
-# Array → PIL conversion
+# Array â†’ PIL conversion
 # ---------------------------------------------------------------------------
 
-def array_to_pil(arr: np.ndarray) -> Image.Image:
+def array_to_pil(arr: np.ndarray, normalization_range: Optional[Tuple[float, float]] = None) -> Image.Image:
     """
     Convert a (C, H, W) rasterio array to a PIL RGB image ready for YOLO.
     Handles 1-, 2-, 3-, and 4+ band images. Normalises non-uint8 dtypes.
@@ -180,19 +180,20 @@ def array_to_pil(arr: np.ndarray) -> Image.Image:
     if arr.shape[0] > 3:
         arr = arr[:3]                                    # drop NIR / extra bands
     elif arr.shape[0] == 1:
-        arr = np.repeat(arr, 3, axis=0)                 # grey → RGB
+        arr = np.repeat(arr, 3, axis=0)                 # grey â†’ RGB
     elif arr.shape[0] == 2:
-        arr = np.concatenate([arr, arr[:1]], axis=0)    # RG → RGB (pad)
+        arr = np.concatenate([arr, arr[:1]], axis=0)    # RG â†’ RGB (pad)
 
     # -- dtype normalisation -------------------------------------------
     if arr.dtype != np.uint8:
-        a_min, a_max = arr.min(), arr.max()
-        if a_max > a_min:
-            arr = ((arr.astype(np.float32) - a_min) / (a_max - a_min) * 255.0).astype(np.uint8)
-        else:
-            arr = np.zeros_like(arr, dtype=np.uint8)
+        if normalization_range is None:
+            raise ValueError("Non-uint8 imagery requires input.normalization_range: [min, max]; per-tile stretching is unsafe.")
+        a_min, a_max = map(float, normalization_range)
+        if not np.isfinite(a_min) or not np.isfinite(a_max) or a_max <= a_min:
+            raise ValueError("input.normalization_range must be finite with max > min.")
+        arr = np.clip((arr.astype(np.float32) - a_min) / (a_max - a_min) * 255.0, 0, 255).astype(np.uint8)
 
-    # (C, H, W) → (H, W, C) for PIL
+    # (C, H, W) â†’ (H, W, C) for PIL
     return Image.fromarray(np.moveaxis(arr, 0, -1))
 
 
@@ -207,6 +208,7 @@ def run_yolo_on_tiles(
     cfg_model: dict,
     device_str: str,
     logger: logging.Logger,
+    normalization_range: Optional[Tuple[float, float]] = None,
 ) -> List[Dict]:
     """
     Runs YOLO detection on every tile of the open rasterio dataset.
@@ -237,9 +239,9 @@ def run_yolo_on_tiles(
             try:
                 arr = src.read(window=window)
             except Exception as exc:
-                logger.warning(f"    Skipping tile {tile}: read error — {exc}")
+                logger.warning(f"    Skipping tile {tile}: read error â€” {exc}")
                 continue
-            pil_imgs.append(array_to_pil(arr))
+            pil_imgs.append(array_to_pil(arr, normalization_range))
             valid_tiles.append(tile)
 
         if not pil_imgs:
@@ -258,7 +260,7 @@ def run_yolo_on_tiles(
                     verbose=verbose,
                     stream=True,
                 )
-                
+
                 for result, tile in zip(results_generator, valid_tiles):
                     if result.boxes is None or len(result.boxes) == 0:
                         continue
@@ -267,7 +269,7 @@ def run_yolo_on_tiles(
                     orig_h, orig_w = result.orig_shape
                     tile_w, tile_h = tile["width"], tile["height"]
 
-                    # Scale factors from YOLO's result space → actual tile pixel space
+                    # Scale factors from YOLO's result space â†’ actual tile pixel space
                     scale_x = tile_w / orig_w
                     scale_y = tile_h / orig_h
 
@@ -322,13 +324,13 @@ def apply_global_nms(detections: List[Dict], iou_threshold: float) -> List[Dict]
     if len(detections) <= 1:
         return detections
 
-    boxes = torch.tensor(
-        [[d["x1_px"], d["y1_px"], d["x2_px"], d["y2_px"]] for d in detections],
-        dtype=torch.float32,
-    )
-    scores = torch.tensor([d["confidence"] for d in detections], dtype=torch.float32)
-    keep = tvops.nms(boxes, scores, iou_threshold)
-    return [detections[i] for i in keep.tolist()]
+    kept: List[Dict] = []
+    for class_id in sorted({int(d["class_id"]) for d in detections}):
+        class_detections = [d for d in detections if int(d["class_id"]) == class_id]
+        boxes = torch.tensor([[d["x1_px"], d["y1_px"], d["x2_px"], d["y2_px"]] for d in class_detections], dtype=torch.float32)
+        scores = torch.tensor([d["confidence"] for d in class_detections], dtype=torch.float32)
+        kept.extend(class_detections[i] for i in tvops.nms(boxes, scores, iou_threshold).tolist())
+    return kept
 
 
 # ---------------------------------------------------------------------------
@@ -355,7 +357,7 @@ def enrich_with_coordinates(
 ) -> List[Dict]:
     """Attach geospatial columns (source CRS, target CRS, WGS-84) to every detection."""
     for d in detections:
-        # ---- pixel → native CRS (e.g., UTM metres) -------------------
+        # ---- pixel â†’ native CRS (e.g., UTM metres) -------------------
         cx_src, cy_src = pixel_to_crs(affine, d["cy_px"], d["cx_px"])
         x1_src, y1_src = pixel_to_crs(affine, d["y1_px"], d["x1_px"])
         x2_src, y2_src = pixel_to_crs(affine, d["y2_px"], d["x2_px"])
@@ -368,7 +370,7 @@ def enrich_with_coordinates(
             d["x2_src"] = round(x2_src, 4)
             d["y2_src"] = round(y2_src, 4)
 
-        # ---- native CRS → target CRS (e.g., GA State Plane) ----------
+        # ---- native CRS â†’ target CRS (e.g., GA State Plane) ----------
         cx_tgt, cy_tgt = to_target.transform(cx_src, cy_src)
         x1_tgt, y1_tgt = to_target.transform(x1_src, y1_src)
         x2_tgt, y2_tgt = to_target.transform(x2_src, y2_src)
@@ -383,7 +385,7 @@ def enrich_with_coordinates(
         d["bbox_height_ft"] = round(abs(y2_tgt - y1_tgt), 2)
         d["bbox_area_sqft"] = round(d["bbox_width_ft"] * d["bbox_height_ft"], 2)
 
-        # ---- native CRS → WGS-84 lat/lon ----------------------------
+        # ---- native CRS â†’ WGS-84 lat/lon ----------------------------
         if to_wgs84 is not None:
             lon, lat = to_wgs84.transform(cx_src, cy_src)
             d["longitude_wgs84"] = round(lon, 7)
@@ -451,6 +453,7 @@ def process_image(
     cfg_tiling = cfg.get("tiling", {})
     cfg_nms    = cfg.get("nms", {})
     cfg_output = cfg.get("output", {})
+    cfg_input = cfg.get("input", {})
 
     window_size        = cfg_tiling.get("window_size", 1024)
     overlap            = float(cfg_tiling.get("overlap", 0.20))
@@ -468,13 +471,13 @@ def process_image(
             src_crs_str  = src.crs.to_string() if src.crs else "UNKNOWN"
             affine       = src.transform
 
-            logger.info(f"  Size: {img_w}×{img_h}px | CRS: {src_crs_str} | Bands: {src.count}")
+            logger.info(f"  Size: {img_w}Ã—{img_h}px | CRS: {src_crs_str} | Bands: {src.count}")
 
             # -- Build CRS transformers --------------------------------
             try:
                 to_target = Transformer.from_crs(src_crs_str, target_crs, always_xy=True)
             except Exception as exc:
-                logger.error(f"  Cannot build {src_crs_str} → {target_crs} transformer: {exc}")
+                logger.error(f"  Cannot build {src_crs_str} â†’ {target_crs} transformer: {exc}")
                 return 0
 
             to_wgs84: Optional[Transformer] = None
@@ -493,7 +496,7 @@ def process_image(
 
             # -- YOLO inference ----------------------------------------
             t0 = time.time()
-            raw_dets = run_yolo_on_tiles(model, src, tiles, cfg_model, device_str, logger)
+            raw_dets = run_yolo_on_tiles(model, src, tiles, cfg_model, device_str, logger, cfg_input.get("normalization_range"))
             elapsed = time.time() - t0
             logger.info(f"  Raw detections: {len(raw_dets)} in {elapsed:.1f}s")
 
@@ -577,7 +580,7 @@ def run_detection(cfg: dict, logger: logging.Logger) -> None:
                 image_path, model, device_str, cfg, csv_writer, csv_file, logger
             )
             total_dets += n
-            logger.info(f"  → Wrote {n} rows  (running total: {total_dets})")
+            logger.info(f"  â†’ Wrote {n} rows  (running total: {total_dets})")
     finally:
         csv_file.flush()
         csv_file.close()
@@ -634,7 +637,7 @@ def main() -> None:
 
     sep = "=" * 60
     logger.info(sep)
-    logger.info("NAIP Poultry Farm Detection — YOLO (bbox only, no SAM)")
+    logger.info("NAIP Poultry Farm Detection â€” YOLO (bbox only, no SAM)")
     logger.info(sep)
     logger.info(f"Config      : {args.config}")
     logger.info(f"Image dir   : {cfg['input']['image_dir']}")

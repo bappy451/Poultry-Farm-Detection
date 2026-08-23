@@ -18,9 +18,9 @@ runtime:
 
 grid_search:
   # The dimensions to sweep over: 2 models x 2 mask ratios = 4 experiments total
-  model_name: ["yolo11l", "yolov26l"]
+  model_name: ["resnet50"]
   mask_ratio: [0.60, 0.75]
-  
+
   # Static hyperparameters
   learning_rate: [0.0004]
   precision: ["fp16"]

@@ -45,6 +45,9 @@ temp*/
 **/temp/**
 **/Data/
 
+# Datasets are local inputs and must never be versioned.
+/datasets/
+
 runs/
 trained_models/
 **/trained_models/

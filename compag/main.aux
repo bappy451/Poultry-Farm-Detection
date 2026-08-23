@@ -2,92 +2,73 @@
 \providecommand\hyper@newdestlabel[2]{}
 \providecommand\HyField@AuxAddToFields[1]{}
 \providecommand\HyField@AuxAddToCoFields[2]{}
-\Newlabel{inst1}{a}
-\citation{robinson2021mapping}
-\citation{jocher2023ultralytics}
-\citation{dosovitskiy2020image}
-\citation{wang2022empirical}
-\citation{ghanbarzade2023}
-\citation{lu2025vision,choudhury2025mimrs}
-\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction: The Foundation Model Hype}{2}{section.1}\protected@file@percent }
-\newlabel{sec:intro}{{1}{2}{Introduction: The Foundation Model Hype}{section.1}{}}
-\citation{guo2024skysense}
-\citation{wang2025macon}
-\citation{jain2022multimodal}
-\citation{liu2026systematic}
-\citation{he2022masked}
-\citation{choudhury2025mimrs}
-\citation{cong2022satmae}
-\citation{sun2023ringmo}
-\citation{reed2022scalemae}
-\citation{dong2024generative,wang2024scaling}
-\citation{fuller2023croma}
-\citation{li2023segmind}
-\citation{sosa2025multimae}
-\citation{zhang2023ctxmim,hackel2025csmoe,wang2023fgmae}
-\@writefile{toc}{\contentsline {section}{\numberline {2}Related Work: Self-Supervision in Earth Observation}{3}{section.2}\protected@file@percent }
-\newlabel{sec:related_work}{{2}{3}{Related Work: Self-Supervision in Earth Observation}{section.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Contrastive Pretraining}{3}{subsection.2.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}The Rise of Masked Image Modeling (MIM)}{3}{subsection.2.2}\protected@file@percent }
-\citation{tian2023spark}
-\@writefile{toc}{\contentsline {section}{\numberline {3}Materials and Methods: The Empirical Design}{4}{section.3}\protected@file@percent }
-\newlabel{sec:methods}{{3}{4}{Materials and Methods: The Empirical Design}{section.3}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces [PLACEHOLDER: Please insert an architecture flowchart illustrating the experimental pipeline: the 1.5TB NAIP dataset $\rightarrow $ SparK Masked Reconstruction $\rightarrow $ YOLO11-OBB Detector $\rightarrow $ LP-FT + LLRD Transfer Protocol.]}}{4}{figure.caption.1}\protected@file@percent }
-\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
-\newlabel{fig:architecture}{{1}{4}{[PLACEHOLDER: Please insert an architecture flowchart illustrating the experimental pipeline: the 1.5TB NAIP dataset $\rightarrow $ SparK Masked Reconstruction $\rightarrow $ YOLO11-OBB Detector $\rightarrow $ LP-FT + LLRD Transfer Protocol.]}{figure.caption.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}The Pretraining Paradigm: Masked Image Modeling on NAIP Imagery}{4}{subsection.3.1}\protected@file@percent }
-\newlabel{subsec:pretraining}{{3.1}{4}{The Pretraining Paradigm: Masked Image Modeling on NAIP Imagery}{subsection.3.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Target Domains: Agricultural Infrastructure Datasets}{4}{subsection.3.2}\protected@file@percent }
-\newlabel{subsec:datasets}{{3.2}{4}{Target Domains: Agricultural Infrastructure Datasets}{subsection.3.2}{}}
+\Newlabel{blind}{a}
+\citation{robinson2021poultry}
+\citation{usgsnaip}
+\citation{hua2023sood}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{2}{section.1}\protected@file@percent }
+\newlabel{sec:introduction}{{1}{2}{Introduction}{section.1}{}}
 \citation{xia2018dota}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Downstream Transfer and Statistical Rigor}{5}{subsection.3.3}\protected@file@percent }
-\newlabel{subsec:transfer}{{3.3}{5}{Downstream Transfer and Statistical Rigor}{subsection.3.3}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {4}Experimental Results and Analysis: The Reality of Domain-Specific SSL}{5}{section.4}\protected@file@percent }
-\newlabel{sec:results}{{4}{5}{Experimental Results and Analysis: The Reality of Domain-Specific SSL}{section.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Full-Data Evaluation: Negligible Gains from 1.5TB of Pretraining}{5}{subsection.4.1}\protected@file@percent }
-\newlabel{subsec:full_results}{{4.1}{5}{Full-Data Evaluation: Negligible Gains from 1.5TB of Pretraining}{subsection.4.1}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Baseline Performance (100\% Training Data). Results are presented as the Mean $\pm $ StdDev across 3 independent initialization seeds. Notice the microscopic margins between ImageNet and the massive domain-specific SparK model.}}{6}{table.caption.2}\protected@file@percent }
-\newlabel{tab:full_results}{{1}{6}{Baseline Performance (100\% Training Data). Results are presented as the Mean $\pm $ StdDev across 3 independent initialization seeds. Notice the microscopic margins between ImageNet and the massive domain-specific SparK model}{table.caption.2}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Downstream Detection Performance (mAP@0.5) utilizing 100\% of the training labels. The parity between off-the-shelf ImageNet and the 1.5TB SparK model is highly evident.}}{6}{figure.caption.3}\protected@file@percent }
-\newlabel{fig:full_data_bar}{{2}{6}{Downstream Detection Performance (mAP@0.5) utilizing 100\% of the training labels. The parity between off-the-shelf ImageNet and the 1.5TB SparK model is highly evident}{figure.caption.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Label-Scarcity Stress Test: The Failure of Domain Purity}{7}{subsection.4.2}\protected@file@percent }
-\newlabel{subsec:fewshot}{{4.2}{7}{Label-Scarcity Stress Test: The Failure of Domain Purity}{subsection.4.2}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces [PLACEHOLDER: Please insert qualitative visual comparisons showing the model predictions under 10\% data conditions. Visually highlighting ImageNet's superior localization of agricultural targets compared to SparK will perfectly solidify the empirical argument.]}}{7}{figure.caption.4}\protected@file@percent }
-\newlabel{fig:qualitative}{{3}{7}{[PLACEHOLDER: Please insert qualitative visual comparisons showing the model predictions under 10\% data conditions. Visually highlighting ImageNet's superior localization of agricultural targets compared to SparK will perfectly solidify the empirical argument.]}{figure.caption.4}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Label-Scarcity Ablation (10\% Training Data). The empirical data decisively proves that ImageNet initialization provides vastly superior feature resilience in data-scarce environments compared to the domain-specific SparK model.}}{8}{table.caption.5}\protected@file@percent }
-\newlabel{tab:fewshot_results}{{2}{8}{Label-Scarcity Ablation (10\% Training Data). The empirical data decisively proves that ImageNet initialization provides vastly superior feature resilience in data-scarce environments compared to the domain-specific SparK model}{table.caption.5}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Performance under extreme label scarcity (10\% data). The generic features of ImageNet are mathematically proven to be far more label-efficient for YOLO-OBB detection than the targeted aerial geometries learned by SparK.}}{8}{figure.caption.6}\protected@file@percent }
-\newlabel{fig:fewshot_data_bar}{{4}{8}{Performance under extreme label scarcity (10\% data). The generic features of ImageNet are mathematically proven to be far more label-efficient for YOLO-OBB detection than the targeted aerial geometries learned by SparK}{figure.caption.6}{}}
+\citation{oquab2023dinov2}
+\citation{hua2023sood}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Related work}{4}{section.2}\protected@file@percent }
+\newlabel{sec:related}{{2}{4}{Related work}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Aerial detection of agricultural infrastructure}{4}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Self-supervision and teacher-guided transfer}{4}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Why pseudo-labeling is a comparison, not a default}{4}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Materials and experimental boundary}{4}{section.3}\protected@file@percent }
+\newlabel{sec:materials}{{3}{4}{Materials and experimental boundary}{section.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Labeled Alabama data}{4}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Unlabeled Mississippi imagery}{5}{subsection.3.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Data roles and separation audit. Development data are used for training and validation-only checkpoint selection. The observed test is held out from selection but is not source-group independent.}}{6}{table.caption.1}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{tab:data_roles}{{1}{6}{Data roles and separation audit. Development data are used for training and validation-only checkpoint selection. The observed test is held out from selection but is not source-group independent}{table.caption.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Data roles and image appearance. (a) A representative unlabeled Mississippi NAIP-derived tile used only for representation adaptation. (b--c) Alabama development examples with reference OBBs for the two poultry-house classes. The colored polygons are original annotations; no held-test image is shown.}}{6}{figure.caption.2}\protected@file@percent }
+\newlabel{fig:data_domains}{{1}{6}{Data roles and image appearance. (a) A representative unlabeled Mississippi NAIP-derived tile used only for representation adaptation. (b--c) Alabama development examples with reference OBBs for the two poultry-house classes. The colored polygons are original annotations; no held-test image is shown}{figure.caption.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Study design. The proposed method transfers a constrained, teacher-guided backbone adaptation from unlabeled Mississippi imagery into a matched Alabama OBB experiment. The test separation is procedural, but the source-group and near-duplicate audit means the observed test is not a geographic independence test.}}{7}{figure.caption.3}\protected@file@percent }
+\newlabel{fig:protocol}{{2}{7}{Study design. The proposed method transfers a constrained, teacher-guided backbone adaptation from unlabeled Mississippi imagery into a matched Alabama OBB experiment. The test separation is procedural, but the source-group and near-duplicate audit means the observed test is not a geographic independence test}{figure.caption.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Methods}{8}{section.4}\protected@file@percent }
+\newlabel{sec:methods}{{4}{8}{Methods}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Domain-anchored DINOv2 feature distillation}{8}{subsection.4.1}\protected@file@percent }
+\newlabel{eq:feature}{{1}{8}{Domain-anchored DINOv2 feature distillation}{equation.1}{}}
+\newlabel{eq:anchor}{{2}{8}{Domain-anchored DINOv2 feature distillation}{equation.2}{}}
+\citation{ultralytics}
+\newlabel{eq:total}{{3}{9}{Domain-anchored DINOv2 feature distillation}{equation.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Matched detector comparison}{9}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Statistical reporting and selection rule}{9}{subsection.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Companion experiments}{10}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Results}{10}{section.5}\protected@file@percent }
+\newlabel{sec:results}{{5}{10}{Results}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Optimization and checkpoint-selection dynamics}{10}{subsection.5.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Optimization behavior of the anchored representation and the matched detector study. (a) Training and internal source-group validation loss during 30 epochs of Mississippi DINOv2 feature distillation. The retained backbone is the minimum validation-loss artifact at epoch 23. (b) Alabama validation mAP50-95{} during 1024-pixel supervised fine-tuning. Thin paths are individual seeds; markers identify the checkpoint selected from each path. These panels document optimization and checkpoint selection, not a statistical superiority test.}}{11}{figure.caption.4}\protected@file@percent }
+\newlabel{fig:training_dynamics}{{3}{11}{Optimization behavior of the anchored representation and the matched detector study. (a) Training and internal source-group validation loss during 30 epochs of Mississippi DINOv2 feature distillation. The retained backbone is the minimum validation-loss artifact at epoch 23. (b) Alabama validation \metric {} during 1024-pixel supervised fine-tuning. Thin paths are individual seeds; markers identify the checkpoint selected from each path. These panels document optimization and checkpoint selection, not a statistical superiority test}{figure.caption.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Primary 1024-pixel comparison}{11}{subsection.5.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Complete primary comparison at 1024 pixels. Values are OBB mAP50-95. Positive differences favor domain-anchored DINOv2 adaptation. The held test is reported as the observed AL test because it is not geographically or source-group independent.}}{12}{table.caption.5}\protected@file@percent }
+\newlabel{tab:primary}{{2}{12}{Complete primary comparison at 1024 pixels. Values are OBB \metric . Positive differences favor domain-anchored DINOv2 adaptation. The held test is reported as the observed AL test because it is not geographically or source-group independent}{table.caption.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Qualitative OBB localization}{12}{subsection.5.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Paired three-seed comparison of the matched 1024-pixel baseline and domain-anchored DINOv2 initialization. Lines connect identical random seeds. Anchored SSL increased the mean on validation and on the observed Alabama test, but one validation seed declined and both paired 95\% intervals include zero. The test panel is a held-file observation, not evidence of geographic generalization.}}{13}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:primary_paired}{{4}{13}{Paired three-seed comparison of the matched 1024-pixel baseline and domain-anchored DINOv2 initialization. Lines connect identical random seeds. Anchored SSL increased the mean on validation and on the observed Alabama test, but one validation seed declined and both paired 95\% intervals include zero. The test panel is a held-file observation, not evidence of geographic generalization}{figure.caption.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Resolution, ensembling, and pseudo-labeling branches}{13}{subsection.5.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Qualitative oriented-detection behavior on two fixed Alabama validation images. Reference OBBs and predictions use the same class colors. The baseline and anchored models are the seed-42 frozen validation checkpoints, selected here by the median validation-effect rule; the scenes were selected by annotation content rather than model outcome. The panel is illustrative and does not replace the complete paired three-seed analysis.}}{14}{figure.caption.7}\protected@file@percent }
+\newlabel{fig:qualitative_obb}{{5}{14}{Qualitative oriented-detection behavior on two fixed Alabama validation images. Reference OBBs and predictions use the same class colors. The baseline and anchored models are the seed-42 frozen validation checkpoints, selected here by the median validation-effect rule; the scenes were selected by annotation content rather than model outcome. The panel is illustrative and does not replace the complete paired three-seed analysis}{figure.caption.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Supporting experimental branches. Metrics are not pooled across rows because label fraction, image size, and evaluation phase differ. ``Validation only'' means no observed-test measurement was used or reported for that branch.}}{15}{table.caption.8}\protected@file@percent }
+\newlabel{tab:branches}{{3}{15}{Supporting experimental branches. Metrics are not pooled across rows because label fraction, image size, and evaluation phase differ. ``Validation only'' means no observed-test measurement was used or reported for that branch}{table.caption.8}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Discussion}{15}{section.6}\protected@file@percent }
+\newlabel{sec:discussion}{{6}{15}{Discussion}{section.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}What the anchored result means}{15}{subsection.6.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Pseudo-label retention audit on a fixed sample of 2,048 Mississippi images per seed. Only 4--7 images retained a pseudo-label after confidence and non-maximum-suppression filtering, corresponding to 0.195--0.342\% image coverage. All retained boxes belonged to the broiler-house class. The sparse, class-collapsed signal explains why pseudo-label losses were not stacked with the proposed anchored representation method.}}{16}{figure.caption.9}\protected@file@percent }
+\newlabel{fig:pseudo_retention}{{6}{16}{Pseudo-label retention audit on a fixed sample of 2,048 Mississippi images per seed. Only 4--7 images retained a pseudo-label after confidence and non-maximum-suppression filtering, corresponding to 0.195--0.342\% image coverage. All retained boxes belonged to the broiler-house class. The sparse, class-collapsed signal explains why pseudo-label losses were not stacked with the proposed anchored representation method}{figure.caption.9}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Why pseudo-labeling was not stacked with the main method}{16}{subsection.6.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}The ensemble is practical but secondary}{17}{subsection.6.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.4}Limitations and confirmatory protocol}{17}{subsection.6.4}\protected@file@percent }
 \bibstyle{elsarticle-harv}
 \bibdata{refs}
-\bibcite{choudhury2025mimrs}{{1}{2025}{{Choudhury et~al.}}{{Choudhury, Vasim, Schmitt and Banerjee}}}
-\@writefile{toc}{\contentsline {section}{\numberline {5}Discussion: Re-evaluating the Foundation Model Paradigm}{9}{section.5}\protected@file@percent }
-\newlabel{sec:discussion}{{5}{9}{Discussion: Re-evaluating the Foundation Model Paradigm}{section.5}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{9}{section.6}\protected@file@percent }
-\newlabel{sec:conclusion}{{6}{9}{Conclusion}{section.6}{}}
-\bibcite{cong2022satmae}{{2}{2022}{{Cong et~al.}}{{Cong, Khanna, Meng, Liu, Rozi, He, Burke, Lobell and Ermon}}}
-\bibcite{dong2024generative}{{3}{2024}{{Dong et~al.}}{{Dong, Gu and Liu}}}
-\bibcite{dosovitskiy2020image}{{4}{2020}{{Dosovitskiy et~al.}}{{Dosovitskiy, Beyer, Kolesnikov, Weissenborn, Zhai, Unterthiner, Dehghani, Minderer, Heigold, Gelly et~al.}}}
-\bibcite{fuller2023croma}{{5}{2024}{{Fuller et~al.}}{{Fuller, Millard and Green}}}
-\bibcite{ghanbarzade2023}{{6}{2023}{{Ghanbarzade et~al.}}{{}}}
-\bibcite{guo2024skysense}{{7}{2024}{{Guo et~al.}}{{Guo, Lao, Dang, Zhang, Yu, Ru, Zhong, Huang, Wu, Hu et~al.}}}
-\bibcite{hackel2025csmoe}{{8}{2025}{{Hackel et~al.}}{{Hackel, Burgert and Demir}}}
-\bibcite{he2022masked}{{9}{2022}{{He et~al.}}{{He, Chen, Xie, Li, Doll{\'a}r and Girshick}}}
-\bibcite{jain2022multimodal}{{10}{2022}{{Jain et~al.}}{{Jain, Wilson and Gulshan}}}
-\bibcite{jocher2023ultralytics}{{11}{2023}{{Jocher et~al.}}{{Jocher, Chaurasia, Stoken, Borovec, Nano, Michael, TaoXie, Fang, imyhxy, Lorna et~al.}}}
-\bibcite{li2023segmind}{{12}{2023}{{Li et~al.}}{{Li, Chen, Wu, Li and Jing}}}
-\bibcite{liu2026systematic}{{13}{2026}{{Liu et~al.}}{{Liu, Zhu, Mi, Yang, Meng, Zhao and Gu}}}
-\bibcite{lu2025vision}{{14}{2025}{{Lu et~al.}}{{Lu, Guo, Zimmer-Dauphinee, Nieusma, Wang, VanValkenburgh, Wernke and Huo}}}
-\bibcite{nedungadi2024mmearth}{{15}{2024}{{Nedungadi et~al.}}{{Nedungadi, Kariryaa, Oehmcke, Belongie, Igel and Lang}}}
-\bibcite{reed2022scalemae}{{16}{2023}{{Reed et~al.}}{{Reed, Gupta, Li, Brockman, Funk, Clipp, Candido, Uyttendaele and Darrell}}}
-\bibcite{robinson2021mapping}{{17}{2021}{{Robinson et~al.}}{{}}}
-\bibcite{sosa2025multimae}{{18}{2025}{{Sosa et~al.}}{{Sosa, Rukhovich, Kacem and Aouada}}}
-\bibcite{sun2023ringmo}{{19}{2022}{{Sun et~al.}}{{Sun, Wang, Lu, Zhu, Lu, He, Li, Rong, Yang, Chang et~al.}}}
-\bibcite{tian2023spark}{{20}{2023}{{Tian et~al.}}{{Tian, Jiang, Diao, Lin, Wang and Yuan}}}
-\bibcite{wang2022empirical}{{21}{2022}{{Wang et~al.}}{{Wang, Zhang, Xu, Zhang, Du, Tao and Zhang}}}
-\bibcite{wang2024scaling}{{22}{2024a}{{Wang et~al.}}{{Wang, Wang, Wang, Guo, Zhong, Lan, Zhang, Liu and Sun}}}
-\bibcite{wang2025macon}{{23}{2025}{{Wang et~al.}}{{Wang, Yan, Yang, Xie, Yuan, Wei, Gao, Zhang and Atkinson}}}
-\bibcite{wang2023fgmae}{{24}{2024b}{{Wang et~al.}}{{Wang, Hern{\'a}ndez, Albrecht and Zhu}}}
-\bibcite{xia2018dota}{{25}{2018}{{Xia et~al.}}{{Xia, Bai, Ding, Zhu, Belongie, Luo, Datcu, Pelillo and Zhang}}}
-\bibcite{zhang2023ctxmim}{{26}{2023}{{Zhang et~al.}}{{Zhang, Liu and Wang}}}
-\gdef \@abspage@last{13}
+\bibcite{hua2023sood}{{1}{2023}{{Hua et~al.}}{{Hua, Liang, Li, Liu, Zou, Ye and Bai}}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Conclusions}{18}{section.7}\protected@file@percent }
+\newlabel{sec:conclusion}{{7}{18}{Conclusions}{section.7}{}}
+\bibcite{ultralytics}{{2}{2024}{{Jocher et~al.}}{{Jocher, Chaurasia, Qiu et~al.}}}
+\bibcite{oquab2023dinov2}{{3}{2023}{{Oquab et~al.}}{{Oquab, Darcet, Moutakanni, Vo et~al.}}}
+\bibcite{robinson2021poultry}{{4}{2021}{{Robinson et~al.}}{{Robinson, Chugg, Anderson, Lavista~Ferres and Ho}}}
+\bibcite{usgsnaip}{{5}{2026}{{U.S. Geological Survey}}{{}}}
+\bibcite{xia2018dota}{{6}{2018}{{Xia et~al.}}{{Xia, Bai, Ding, Zhu, Belongie, Luo, Datcu, Pelillo and Zhang}}}
+\gdef \@abspage@last{20}

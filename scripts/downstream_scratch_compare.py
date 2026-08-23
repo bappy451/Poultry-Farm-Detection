@@ -1,12 +1,12 @@
-"""
+﻿"""
 downstream_scratch_compare.py
 =============================
 Trains and evaluates three YOLO11l-OBB models on the poultry house detection task
 for a limited training budget (e.g., 50 epochs) to demonstrate data/compute efficiency:
 
-  Run A  — Official Ultralytics ImageNet weights               (baseline)
-  Run B  — Random weight initialization                        (scratch ablation)
-  Run C  — Our SparK-from-scratch backbone with LP-FT + LLRD   (ours)
+  Run A  â€” Official Ultralytics ImageNet weights               (baseline)
+  Run B  â€” Random weight initialization                        (scratch ablation)
+  Run C  â€” Our SparK-from-scratch backbone with LP-FT + LLRD   (ours)
 
 LP-FT (Linear Probing followed by End-to-End Fine-Tuning) + LLRD:
 -----------------------------------------------------------------
@@ -34,17 +34,17 @@ import torch
 import yaml
 import numpy as np
 
-# ── Project root (two levels up from this script) ────────────────────────────
+# â”€â”€ Project root (two levels up from this script) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-# ── Paths & Default Hyperparameters ──────────────────────────────────────────
+# â”€â”€ Paths & Default Hyperparameters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 DEFAULT_SPARK_BACKBONE_PT = (
     ROOT
     / "trained_models"
     / "spark-scratch"
     / "af8e64a7ed89_yolo11l_fp16"
-    / "backbone_dense_ep299.pt"
+    / "backbone_dense_best.pt"
 )
 DEFAULT_DATA_YAML = ROOT / "configs" / "poultry_obb.yaml"
 DEFAULT_OUTPUT_DIR = ROOT / "runs" / "downstream_scratch"
@@ -79,28 +79,10 @@ DEFAULT_TRAIN_ARGS: dict = dict(
 
 
 def _load_spark_weights_into_yolo(model, backbone_pt: Path) -> None:
-    """
-    Surgically inject SparK-from-scratch backbone weights into YOLO11l.
-    Loads with strict=False so detection neck/heads keep their standard initialisation.
-    """
-    print(f"\n[SparK] Loading backbone from: {backbone_pt}")
-    backbone_state = torch.load(str(backbone_pt), map_location="cpu", weights_only=True)
-
-    yolo_state = model.model.state_dict()
-    matched, skipped = 0, 0
-    patch: dict = {}
-    for key, tensor in backbone_state.items():
-        if key in yolo_state and yolo_state[key].shape == tensor.shape:
-            patch[key] = tensor
-            matched += 1
-        else:
-            skipped += 1
-
-    yolo_state.update(patch)
-    model.model.load_state_dict(yolo_state, strict=False)
-    print(f"[SparK] Injected {matched} tensors  |  Skipped {skipped} tensors")
-
-
+    raise RuntimeError(
+        "SparK-to-YOLO transfer is disabled: the supported SparK encoder is ResNet50, "
+        "and this project has no verified architecture-preserving YOLO adapter."
+    )
 def _extract_metrics(run_dir: Path) -> dict:
     """Extract final-epoch OBB detection metrics from results.csv."""
     results_csv = run_dir / "results.csv"
@@ -289,7 +271,7 @@ def main() -> None:
             for k in metric_keys:
                 vals = [float(r.get(k, 0.0)) for r in exp_results if r.get(k)]
                 if vals:
-                    agg_m[k] = f"{np.mean(vals):.4f} ± {np.std(vals):.4f}"
+                    agg_m[k] = f"{np.mean(vals):.4f} Â± {np.std(vals):.4f}"
                     agg_m[f"{k}_mean"] = np.mean(vals)
                 else:
                     agg_m[k] = "N/A"
@@ -300,7 +282,7 @@ def main() -> None:
             results.append(exp_results[0])
             metrics_by_name[exp_name] = exp_results[0]
 
-    # ── Print comparison table ────────────────────────────────────────────────
+    # â”€â”€ Print comparison table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     print("\n" + "=" * 80)
     print(f"  THREE-WAY COMPARISON RESULTS ({train_args.get('epochs', 50)} Epochs)")
     print("=" * 80)
@@ -326,7 +308,7 @@ def main() -> None:
             writer.writerows(results)
     print(f"\nResults saved to: {out_csv}")
 
-    # ── Quick Delta Analysis ──────────────────────────────────────────────────
+    # â”€â”€ Quick Delta Analysis â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     try:
         if repeats > 1:
             map50_imgnet = float(metrics_by_name.get("imagenet_baseline", {}).get("metrics/mAP50(B)_mean", "nan"))

@@ -21,6 +21,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+spark = [
+  "spconv-cu120==2.3.8; python_version < '3.12'",
+]
+
 dev = [
   "pytest>=8.2",
 ]
@@ -36,7 +40,7 @@ ml = [
   "torchvision>=0.17",
   "tqdm>=4.66",
   "transformers>=4.44",
-  "ultralytics>=8.3",
+  "ultralytics==8.4.63",
   "wandb>=0.17",
 ]
 
@@ -55,3 +59,4 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+

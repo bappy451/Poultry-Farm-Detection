@@ -1,0 +1,58 @@
+# Publication-style pseudo-OBB experiment with a supervised poultry burn-in.
+data: configs/poultry_clean_label_subsets/poultry_clean_10percent.yaml
+final_test_data: temp/poultry_houses_test/data.yaml
+final_test_split: test
+unlabeled_root: 'E:\NAIP_Dataset_PH\MS_tiles_512_256_jpg'
+model: yolo11l-obb.pt
+output_dir: runs/ema_pseudo_obb_burnin_clean_10pct
+seeds: [0, 7, 42]
+fraction: 1.0
+
+# The baseline checkpoint is trained only on the labeled 10% subset.  It is
+# then used to initialize both the pseudo-OBB student and EMA teacher.
+baseline_epochs: 100
+baseline_lr0: 0.001
+baseline_weight_decay: 0.0005
+matched_supervised_control: true
+matched_weight_decay: 0.0005
+
+# Pseudo-OBB adaptation and matched supervised recovery.
+adapt_epochs: 60
+finetune_epochs: 100
+adapt_lr0: 0.00001
+finetune_lr0: 0.0003
+batch: 16
+unlabeled_batch: 16
+test_batch: 32
+imgsz: 640
+unlabeled_imgsz: 448
+workers: 12
+unlabeled_workers: 2
+unlabeled_limit: 250000
+prefetch_factor: 2
+device: '0'
+
+# Pseudo-label loss.  The first five adaptation epochs remain supervised-only
+# through pseudo_warmup_epochs, even though the student/teacher start from the
+# supervised burn-in checkpoint.
+pseudo_obb_weight: 0.05
+pseudo_iou_threshold: 0.50
+pseudo_class_margin: 0.05
+pseudo_max_det: 100
+pseudo_warmup_epochs: 5
+pseudo_rampup_epochs: 10
+feature_consistency_weight: 0.0
+feature_rampup_epochs: 10
+foreground_feature_gain: 3.0
+ema_decay: 0.9998
+
+# Thresholds are learned per seed from the labeled validation split.  The
+# final test set is never used for calibration or checkpoint selection.
+calibration:
+  precision_target: 0.90
+  iou_match: 0.50
+  min_predictions: 10
+  min_confidence: 0.50
+  max_confidence: 0.99
+  step: 0.01
+  fallback: 0.90

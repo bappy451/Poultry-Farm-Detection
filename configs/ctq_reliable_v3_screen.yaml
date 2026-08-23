@@ -1,0 +1,46 @@
+# Requires test-v2/source-disjoint artifacts from ctq_development_v3.yaml.
+# This screen never reads a test split: all selection is validation mAP50-95.
+protocol_name: ctq_reliable_v3_validation_screen
+data: configs/poultry_source_disjoint_v2.yaml
+unlabeled_root: 'E:\NAIP_Dataset_PH\MS_tiles_512_256_jpg'
+unlabeled_catalog: runs/ctq_development_v3/unlabeled_without_test_v2_sources.csv
+model: yolo11l-obb.pt
+output_dir: runs/ctq_reliable_v3_screen
+device: '0'
+seeds: [7, 17, 42]
+selection_metric: metrics/mAP50-95(B)
+
+baseline:
+  epochs: 100
+  batch: 16
+  imgsz: 640
+  workers: 12
+
+calibration:
+  precision_target: 0.90
+  min_predictions: 20
+  min_confidence: 0.75
+  max_confidence: 0.93
+  step: 0.01
+  fallback: 0.93
+  iou_match: 0.50
+
+adaptation:
+  epochs: 60
+  batch: 16
+  unlabeled_batch: 16
+  imgsz: 640
+  unlabeled_imgsz: 448
+  workers: 12
+  unlabeled_workers: 2
+  pseudo_iou_threshold: 0.50
+  pseudo_class_margin: 0.05
+  pseudo_warmup_epochs: 5
+  pseudo_rampup_epochs: 10
+
+candidate:
+  quality_alpha: 1.0
+  pseudo_obb_weight: 0.01
+  teacher_jitter_views: 2
+  teacher_jitter_iou: 0.70
+  teacher_jitter_agreement: 1.0

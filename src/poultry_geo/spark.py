@@ -1,150 +1,96 @@
-import torch
+﻿import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 
 try:
     import spconv.pytorch as spconv
 except ImportError:
-    # Fallback or Mock for environments where spconv is not installed
-    # This allows the logic to be defined even if the library is missing
     spconv = None
 
-class PatchMasker:
-    """
-    Generates random binary masks for patch-based image masking.
-    
-    This utility is used in Self-Supervised Learning (SSL) objectives like 
-    Masked Image Modeling (MIM) to hide portions of the input image, 
-    forcing the model to learn spatial context and semantic features 
-    to reconstruct the missing regions.
-    """
-    def __init__(self, patch_size: int = 16, mask_ratio: float = 0.75):
-        """
-        Args:
-            patch_size: The size of each square patch in pixels.
-            mask_ratio: Fraction of the image to be masked (0.0 to 1.0).
-        """
+
+def require_spconv() -> None:
+    """Fail closed when a caller requests the sparse SparK implementation."""
+    if spconv is None:
+        raise RuntimeError(
+            "SparK requires spconv for sparse convolution. Install a spconv build "
+            "compatible with this PyTorch/CUDA environment; the old dense-zero "
+            "fallback is intentionally unsupported because it is not SparK."
+        )
+
+
+class SparseTransformer(nn.Module):
+    """Convert visible image patches into a native 2-D ``SparseConvTensor``."""
+
+    def __init__(self, adapter: nn.Module, patch_size: int = 16, mask_ratio: float = 0.75):
+        super().__init__()
+        if patch_size <= 0:
+            raise ValueError("patch_size must be positive.")
+        if not 0.0 <= mask_ratio < 1.0:
+            raise ValueError("mask_ratio must be in [0, 1); at least one patch must remain visible.")
+        self.adapter = adapter
         self.patch_size = patch_size
         self.mask_ratio = mask_ratio
 
-    def generate_mask(self, B: int, H: int, W: int, device: torch.device = torch.device('cpu')) -> torch.Tensor:
-        """
-        Generates a binary mask of shape (B, 1, H, W).
-        1 indicates a masked pixel, 0 indicates an unmasked (visible) pixel.
-        """
-        h_p, w_p = H // self.patch_size, W // self.patch_size
-        num_patches = h_p * w_p
-        num_mask = int(num_patches * self.mask_ratio)
-        
-        # Optimized: Vectorized mask generation without loops
-        noise = torch.rand(B, num_patches, device=device)
-        # 1 = masked, 0 = unmasked
-        mask = torch.zeros(B, num_patches, device=device)
-        mask.scatter_(1, noise.topk(num_mask, dim=1).indices, 1.0)
-            
-        # Reshape and upsample
-        mask = mask.reshape(B, 1, h_p, w_p)
-        mask = F.interpolate(mask, size=(H, W), mode='nearest')
-        
-        return mask
-
-class SparseTransformer(nn.Module):
-    """
-    Converts masked multi-band remote sensing imagery into native Sparse Tensors.
-    
-    This module bridges standard dense image processing with Sparse Convolution 
-    frameworks (like spconv). It is specifically designed for SparK-style 
-    SSL pretraining, where only the unmasked (visible) pixels are processed 
-    by the sparse encoder, significantly reducing computation while 
-    enabling hierarchical CNNs to learn from masked inputs.
-    """
-    def __init__(self, adapter: nn.Module, patch_size: int = 16, mask_ratio: float = 0.75):
-        """
-        Args:
-            adapter: A BandAdapter module to project multi-band input into 3-channel space.
-            patch_size: Pixel size of the masking patches.
-            mask_ratio: Fraction of the image to mask.
-        """
-        super().__init__()
-        self.adapter = adapter
-        self.masker = PatchMasker(patch_size=patch_size, mask_ratio=mask_ratio)
+    def generate_mask(
+        self, batch_size: int, height: int, width: int, device: torch.device
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return full-resolution and flattened patch masks (1=hidden, 0=visible)."""
+        if batch_size <= 0 or height <= 0 or width <= 0:
+            raise ValueError("Batch size and image dimensions must be positive.")
+        if height % self.patch_size or width % self.patch_size:
+            raise ValueError(
+                f"Image size {(height, width)} must be divisible by patch_size={self.patch_size}."
+            )
+        patch_height = height // self.patch_size
+        patch_width = width // self.patch_size
+        patch_count = patch_height * patch_width
+        hidden_count = int(patch_count * self.mask_ratio)
+        noise = torch.rand(batch_size, patch_count, device=device)
+        patch_mask = torch.zeros(batch_size, patch_count, device=device)
+        if hidden_count:
+            patch_mask.scatter_(1, noise.topk(hidden_count, dim=1).indices, 1.0)
+        mask = F.interpolate(
+            patch_mask.reshape(batch_size, 1, patch_height, patch_width),
+            size=(height, width),
+            mode="nearest",
+        )
+        return mask, patch_mask
 
     def forward(self, x: torch.Tensor):
-        """
-        Transforms a dense image batch into a SparseConvTensor containing only visible pixels.
-        """
-        B, C, H, W = x.shape
+        """Return a sparse tensor containing only visible pixels and its mask."""
+        require_spconv()
+        if x.ndim != 4:
+            raise ValueError("SparseTransformer expects [batch, channels, height, width].")
+        batch_size, _, height, width = x.shape
         device = x.device
-        
-        # 1. BandAdapter processing
-        x_adapted = self.adapter(x)
-        
-        # 2. Generate patch-level mask
-        h_p, w_p = H // self.masker.patch_size, W // self.masker.patch_size
-        num_patches = h_p * w_p
-        num_mask = int(num_patches * self.masker.mask_ratio)
-        
-        noise = torch.rand(B, num_patches, device=device)
-        patch_mask = torch.zeros(B, num_patches, device=device)
-        patch_mask.scatter_(1, noise.topk(num_mask, dim=1).indices, 1.0)
-        
-        # Expand to full resolution mask for loss calculation
-        mask = patch_mask.reshape(B, 1, h_p, w_p)
-        mask = F.interpolate(mask, size=(H, W), mode='nearest')
+        adapted = self.adapter(x)
+        if adapted.ndim != 4 or adapted.shape[0] != batch_size or adapted.shape[2:] != (height, width):
+            raise ValueError("Band adapter must preserve batch and spatial dimensions.")
 
-        # 3. Optimized coordinate extraction (Patch-based expansion)
-        # Find indices of visible patches (patch_mask == 0)
-        vis_patch_indices = (patch_mask == 0).nonzero(as_tuple=False) # [num_vis_patches, 2] -> (Batch, PatchIdx)
-        
-        if vis_patch_indices.shape[0] == 0:
-            # Fallback for edge case: no visible pixels
-            if spconv is not None:
-                return spconv.SparseConvTensor(torch.empty(0, 3, device=device), torch.empty(0, 4, device=device), [1, H, W], B), mask
-            return (torch.empty(0, 3, device=device), torch.empty(0, 4, device=device), [1, H, W], B), mask
+        mask, patch_mask = self.generate_mask(batch_size, height, width, device)
+        patch_width = width // self.patch_size
+        visible_patches = (patch_mask == 0).nonzero(as_tuple=False)
+        if not len(visible_patches):
+            raise RuntimeError("Mask generation left no visible patches.")
 
-        # Expand patch indices to pixel coordinates
-        # Each patch becomes patch_size * patch_size pixels
-        p_s = self.masker.patch_size
-        num_pixels_per_patch = p_s * p_s
-        
-        # Local pixel grid
-        yy, xx = torch.meshgrid(
-            torch.arange(p_s, device=device),
-            torch.arange(p_s, device=device),
-            indexing='ij'
+        patch_pixels = self.patch_size * self.patch_size
+        local_y, local_x = torch.meshgrid(
+            torch.arange(self.patch_size, device=device),
+            torch.arange(self.patch_size, device=device),
+            indexing="ij",
         )
-        yy = yy.reshape(-1) # [p_s*p_s]
-        xx = xx.reshape(-1) # [p_s*p_s]
-        
-        # Patch top-left corners
-        b_idx = vis_patch_indices[:, 0]
-        p_idx = vis_patch_indices[:, 1]
-        p_y = (p_idx // w_p) * p_s
-        p_x = (p_idx % w_p) * p_s
-        
-        # Repeat and offset to get pixel coordinates
-        # Using broadcasting to avoid loops
-        b_idx_ext = b_idx.repeat_interleave(num_pixels_per_patch)
-        y_idx_ext = p_y.repeat_interleave(num_pixels_per_patch) + yy.repeat(vis_patch_indices.shape[0])
-        x_idx_ext = p_x.repeat_interleave(num_pixels_per_patch) + xx.repeat(vis_patch_indices.shape[0])
-        
-        # Prepare indices [N, 4] -> (B, Z, Y, X)
-        z_idx_ext = torch.zeros_like(b_idx_ext)
-        indices = torch.stack([b_idx_ext.int(), z_idx_ext.int(), y_idx_ext.int(), x_idx_ext.int()], dim=1)
-        
-        # Gather features
-        features = x_adapted[b_idx_ext, :, y_idx_ext, x_idx_ext]
-        
-        # 4. Instantiate the Sparse Tensor
-        if spconv is not None:
-            sparse_tensor = spconv.SparseConvTensor(
-                features=features,
-                indices=indices,
-                spatial_shape=[1, H, W],
-                batch_size=B
-            )
-        else:
-            sparse_tensor = (features, indices, [1, H, W], B)
-            
-        return sparse_tensor, mask
+        local_y, local_x = local_y.flatten(), local_x.flatten()
+        batch_index, patch_index = visible_patches[:, 0], visible_patches[:, 1]
+        patch_y = (patch_index // patch_width) * self.patch_size
+        patch_x = (patch_index % patch_width) * self.patch_size
+        expanded_batch = batch_index.repeat_interleave(patch_pixels)
+        y_index = patch_y.repeat_interleave(patch_pixels) + local_y.repeat(len(visible_patches))
+        x_index = patch_x.repeat_interleave(patch_pixels) + local_x.repeat(len(visible_patches))
+        indices = torch.stack((expanded_batch.int(), y_index.int(), x_index.int()), dim=1)
+        features = adapted[expanded_batch, :, y_index, x_index]
+        return spconv.SparseConvTensor(
+            features=features,
+            indices=indices,
+            spatial_shape=[height, width],
+            batch_size=batch_size,
+        ), mask

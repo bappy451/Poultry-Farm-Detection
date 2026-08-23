@@ -1,0 +1,33 @@
+# Validation-only follow-up. This intentionally contains no final-test path:
+# the existing AL test split has already been observed and cannot be reused to
+# select or confirm this 640x640 SSL setting.
+study_name: ssl_al_ms_anchored_dinov2_640_validation_v1
+output_dir: runs/ssl_al_ms_anchored_dinov2_640_validation_v1
+
+baseline:
+  config: configs/full_al_640_baseline_v1.yaml
+  protocol_dir: runs/full_al_640_baseline_v1
+
+pretraining:
+  config: configs/ssl_ms_anchored_dinov2_pretrain_v3.yaml
+  artifact: runs/ssl_al_ms_anchored_dinov2_v3/00_ms_pretraining/anchored_ssl_backbone_best.pt
+
+data:
+  training: configs/poultry_clean_label_subsets/poultry_clean_100percent_trainval_only.yaml
+  init_model: yolo11l-obb.pt
+
+training:
+  seeds: [7, 17, 42]
+  epochs: 100
+  imgsz: 640
+  batch: 16
+  workers: 12
+  device: '0'
+  lr0: 0.001
+  weight_decay: 0.0005
+
+selection:
+  metric: metrics/mAP50-95(B)
+  validation_only: true
+  minimum_mean_delta: 0.0
+  report_all_seed_robustness: true

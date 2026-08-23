@@ -86,7 +86,7 @@ def test_load_dino_backbone_into_vit(tmp_path: Path) -> None:
     ckpt_file = tmp_path / "dino_synth.pt"
     torch.save({"student_backbone": synth_state}, ckpt_file)
 
-    model = load_dino_backbone_into_vit(model, ckpt_file)
+    model = load_dino_backbone_into_vit(model, ckpt_file, minimum_parameter_coverage=0.0)
     assert torch.allclose(model.backbone.blocks[0].norm1.weight, torch.ones(768) * 5.0)
 
 

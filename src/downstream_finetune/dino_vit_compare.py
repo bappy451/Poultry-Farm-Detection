@@ -26,6 +26,7 @@ import torch.nn.functional as F
 import yaml
 from torch.utils.data import DataLoader
 
+from poultry_geo.dino_checkpoint import load_state_dict_with_coverage
 from poultry_geo.ssl_models import RemoteSensingSegmentationModel
 from .finetune_resnet50 import YoloFormatSegmentationDataset
 
@@ -64,7 +65,12 @@ def resolve_dino_checkpoint(path_str: str | Path) -> Path:
     raise FileNotFoundError(f"Could not resolve a valid DINO checkpoint in: {target_path}")
 
 
-def load_dino_backbone_into_vit(model: RemoteSensingSegmentationModel, checkpoint_path: str | Path) -> RemoteSensingSegmentationModel:
+def load_dino_backbone_into_vit(
+    model: RemoteSensingSegmentationModel,
+    checkpoint_path: str | Path,
+    *,
+    minimum_parameter_coverage: float = 0.90,
+) -> RemoteSensingSegmentationModel:
     """Load a DINO self-supervised checkpoint into RemoteSensingSegmentationModel ViT backbone."""
     ckpt_file = resolve_dino_checkpoint(checkpoint_path)
     print(f"[DINO Loader] Loading checkpoint from {ckpt_file}...")
@@ -107,8 +113,13 @@ def load_dino_backbone_into_vit(model: RemoteSensingSegmentationModel, checkpoin
             pos_embed = pos_embed_2d.permute(0, 2, 3, 1).reshape(1, target_num_patches, target_pos_embed.shape[-1])
             translated["pos_embed"] = pos_embed
 
-    msg = model.backbone.load_state_dict(translated, strict=False)
-    print(f"[DINO Loader] Weights loaded into ViT backbone. Missing keys: {len(msg.missing_keys)}, Unexpected keys: {len(msg.unexpected_keys)}")
+    coverage = load_state_dict_with_coverage(
+        model.backbone,
+        translated,
+        minimum_parameter_coverage=minimum_parameter_coverage,
+        context=f"DINO downstream checkpoint '{ckpt_file}'",
+    )
+    print(f"[DINO Loader] Loaded ViT backbone with {coverage:.1%} parameter coverage.")
     return model
 
 
@@ -303,7 +314,11 @@ def run_suite(config_path: str | Path, dry_run: bool = False) -> tuple[list[dict
                 )
 
                 if init_strategy == "dino":
-                    model = load_dino_backbone_into_vit(model, dino_checkpoint_dir)
+                    model = load_dino_backbone_into_vit(
+                        model,
+                        dino_checkpoint_dir,
+                        minimum_parameter_coverage=0.0 if dry_run else 0.90,
+                    )
                 elif init_strategy == "imagenet":
                     model = load_imagenet_backbone_into_vit(model, "vit_base_patch16_224")
                 else:

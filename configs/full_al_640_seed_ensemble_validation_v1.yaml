@@ -1,0 +1,65 @@
+# Exploratory validation-only ensemble of the three already-frozen full-AL
+# YOLO11l-OBB 640x640 baseline checkpoints. There is intentionally no held-out
+# evaluation path or phase in this protocol.
+study_name: full_al_640_seed_ensemble_validation_v1
+output_dir: runs/full_al_640_seed_ensemble_validation_v1
+
+data:
+  training: configs/poultry_clean_label_subsets/poultry_clean_100percent_trainval_only.yaml
+  training_yaml_sha256: 503d1dba2cf657be21970684f95633afaa6b122f0886841e278b63a8db211416
+  provenance_sha256: eb3a213e160ed4de68eab3a29707c903a7c541dbe9afe89321141ebf5cadf87c
+
+baseline:
+  config: configs/full_al_640_baseline_v1.yaml
+  config_sha256: 4feff921d2a4f683b0d29347047e7d4c590c20f0e06886fb1b1e441d8d35a7a8
+  protocol_dir: runs/full_al_640_baseline_v1
+  protocol_snapshot: runs/full_al_640_baseline_v1/protocol_config.yaml
+  validation_rows: runs/full_al_640_baseline_v1/validation_per_seed.csv
+  validation_rows_sha256: a7e505c5ea571cf91bb9a0f95378e99a105be7666526db7070110364b6581729
+  validation_marker: runs/full_al_640_baseline_v1/validation_complete.json
+  validation_marker_sha256: 6c11ef0ed845d04533a7cfed012830638c79b8669b08f59ac184317497d39d33
+  checkpoints:
+    '7':
+      path: runs/full_al_640_baseline_v1/baseline/seed7/weights/best.pt
+      sha256: 6980fe243da06e837ef079a4f56e499a1eadf777f40c402d40caa2c711161855
+      best_val_map50_95: 0.86479
+    '17':
+      path: runs/full_al_640_baseline_v1/baseline/seed17/weights/best.pt
+      sha256: 9894ef3df802c170cadfddf0afa6cff23134d0bede68ad5c44d67ef75900e044
+      best_val_map50_95: 0.86012
+    '42':
+      path: runs/full_al_640_baseline_v1/baseline/seed42/weights/best.pt
+      sha256: 049c7f167c76c9274c27c3f7c2f8bd98ab49130024b1f383052cb5b4a5f865a7
+      best_val_map50_95: 0.86413
+
+evaluation:
+  split: val
+  imgsz: 640
+  batch: 16
+  workers: 12
+  device: '0'
+  conf: 0.01
+  iou: 0.70
+  max_det: 300
+  half: false
+  augment: false
+  plots: false
+
+selection:
+  metric: metrics/mAP50-95(B)
+  validation_only: true
+
+runtime:
+  python: 3.12.13
+  torch: 2.12.0+cu126
+  ultralytics: 8.4.63
+  cuda: '12.6'
+  cudnn: 91002
+  gpu: NVIDIA GeForce RTX 4090
+  checkpoint_ultralytics: 8.4.63
+
+reference:
+  baseline_mean_map50_95: 0.8630133333333333
+  best_single_map50_95: 0.86479
+  ensemble_map50_95: 0.8660672572053741
+  absolute_tolerance: 0.000001

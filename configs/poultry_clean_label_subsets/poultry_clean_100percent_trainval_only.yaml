@@ -1,0 +1,10 @@
+# Development-only AL dataset. The held test set is intentionally absent and
+# is supplied exclusively to the protocol's explicit final-test phase.
+train: C:/Users/mza0288/Documents/Poultry-Farm-Detection/datasets/poultry_clean_label_subsets/manifests/deduplicated_v1/train.txt
+val: C:/Users/mza0288/Documents/Poultry-Farm-Detection/datasets/poultry_clean_label_subsets/manifests/deduplicated_v1/val.txt
+provenance: C:/Users/mza0288/Documents/Poultry-Farm-Detection/datasets/poultry_clean_label_subsets/manifests/deduplicated_v1/provenance.json
+
+nc: 2
+names:
+  0: broiler breeder
+  1: broiler house

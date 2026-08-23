@@ -24,6 +24,7 @@ import torch.nn.functional as F
 from PIL import Image
 
 from poultry_geo.dino import build_dino_model
+from poultry_geo.dino_checkpoint import extract_dino_backbone_state, load_state_dict_with_coverage
 
 
 def load_image_tensor(image_path: str | Path, target_size: int = 512) -> tuple[torch.Tensor, np.ndarray]:
@@ -45,7 +46,9 @@ def load_image_tensor(image_path: str | Path, target_size: int = 512) -> tuple[t
         img_rgb = cv2.resize(img_rgb, (target_size, target_size), interpolation=cv2.INTER_LINEAR)
 
     tensor = torch.from_numpy(img_rgb).permute(2, 0, 1).unsqueeze(0).float() / 255.0
-    return tensor, img_rgb
+    mean = tensor.new_tensor((0.485, 0.456, 0.406)).view(1, 3, 1, 1)
+    std = tensor.new_tensor((0.229, 0.224, 0.225)).view(1, 3, 1, 1)
+    return (tensor - mean) / std, img_rgb
 
 
 def compute_cosine_similarity_maps(
@@ -236,7 +239,7 @@ def generate_dino_visualizations(
 
     model = build_dino_model(
         model_name=model_name,
-        out_dim=65536,
+        dino_out_dim=65536,
         crop_size=512,
         patch_size=patch_size,
         pretrained_backbone=True,
@@ -244,13 +247,14 @@ def generate_dino_visualizations(
 
     if checkpoint_path and os.path.exists(str(checkpoint_path)):
         print(f"Loading weights from checkpoint: {checkpoint_path}")
-        ckpt = torch.load(str(checkpoint_path), map_location="cpu")
-        if "teacher" in ckpt:
-            model.load_state_dict(ckpt["teacher"], strict=False)
-        elif "model" in ckpt:
-            model.load_state_dict(ckpt["model"], strict=False)
-        else:
-            model.load_state_dict(ckpt, strict=False)
+        ckpt = torch.load(str(checkpoint_path), map_location="cpu", weights_only=False)
+        teacher_state = extract_dino_backbone_state(ckpt, role="teacher")
+        coverage = load_state_dict_with_coverage(
+            model.teacher_backbone.backbone,
+            teacher_state,
+            context=f"DINO visualization checkpoint '{checkpoint_path}'",
+        )
+        print(f"Loaded DINO teacher backbone with {coverage:.1%} parameter coverage.")
 
     backbone = model.teacher_backbone.to(torch_device)
     backbone.eval()

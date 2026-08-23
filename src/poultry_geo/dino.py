@@ -34,6 +34,7 @@ class DINOHead(nn.Module):
         hidden_dim: int = 2048,
         bottleneck_dim: int = 256,
         nlayers: int = 3,
+        norm_last_layer: bool = True,
     ) -> None:
         super().__init__()
         nlayers = max(1, int(nlayers))
@@ -55,10 +56,12 @@ class DINOHead(nn.Module):
         self.last_layer = weight_norm(nn.Linear(bottleneck_dim, out_dim, bias=False))
         if hasattr(self.last_layer, "weight_g"):
             self.last_layer.weight_g.data.fill_(1)
+            self.last_layer.weight_g.requires_grad = not norm_last_layer
         elif hasattr(self.last_layer, "parametrizations") and hasattr(
             self.last_layer.parametrizations, "weight"
         ):
             self.last_layer.parametrizations.weight.original0.data.fill_(1)
+            self.last_layer.parametrizations.weight.original0.requires_grad = not norm_last_layer
 
     def _init_weights(self, m: nn.Module) -> None:
         if isinstance(m, nn.Linear):

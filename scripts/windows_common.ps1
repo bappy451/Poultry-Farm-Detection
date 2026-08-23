@@ -1,4 +1,4 @@
-# Set strict mode and error preference
+﻿# Set strict mode and error preference
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -207,11 +207,8 @@ function Resolve-PreferredPython {
         return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $expandedPython))
     }
 
-    $venvPython = Join-Path $CodeDir ".venv\Scripts\python.exe"
-    if (Test-Path $venvPython) {
-        return $venvPython
-    }
-
+    # Prefer an activated conda environment over the repository .venv. This lets
+    # GPU/SparK launches use their explicitly selected CUDA runtime.
     if (-not [string]::IsNullOrWhiteSpace($env:CONDA_PREFIX)) {
         $condaPython = Join-Path $env:CONDA_PREFIX "python.exe"
         if (Test-Path $condaPython) {
@@ -219,6 +216,10 @@ function Resolve-PreferredPython {
         }
     }
 
+    $venvPython = Join-Path $CodeDir ".venv\Scripts\python.exe"
+    if (Test-Path $venvPython) {
+        return $venvPython
+    }
     $condaCommand = Get-Command conda -ErrorAction SilentlyContinue
     if ($null -ne $condaCommand) {
         try {
@@ -246,3 +247,4 @@ function Resolve-PreferredPython {
 
     throw "No Python interpreter was found. Create .venv first or pass --python PATH."
 }
+

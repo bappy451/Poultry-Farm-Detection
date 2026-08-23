@@ -1,0 +1,8 @@
+path: C:\Users\mza0288\Documents\Poultry-Farm-Detection\datasets\poultry_nested\10percent
+train: images/train
+val: images/val
+test: images/test
+nc: 2
+names:
+  0: broiler breeder
+  1: broiler house

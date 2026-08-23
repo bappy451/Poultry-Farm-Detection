@@ -1,0 +1,8 @@
+path: C:\Users\mza0288\Documents\Poultry-Farm-Detection\configs
+train: C:\Users\mza0288\Documents\Poultry-Farm-Detection\datasets\poultry_clean_label_subsets\manifests\poultry_clean_5percent_train.txt
+val: C:\Users\mza0288\Documents\Poultry-Farm-Detection\datasets\poultry_clean_raw_90_10\images\val
+test: C:\Users\mza0288\Documents\Poultry-Farm-Detection\temp\poultry_houses_test\test\images
+nc: 2
+names:
+  0: broiler breeder
+  1: broiler house

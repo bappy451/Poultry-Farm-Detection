@@ -1,0 +1,12 @@
+# Validation-only AL baseline screen. The test key in the data YAML is never used.
+data: configs/poultry_clean_label_subsets/poultry_clean_10percent.yaml
+model: yolo11l-obb.pt
+output_dir: runs/ctq_al_ms_v1/supervised_resolution
+device: '0'
+seeds: [7, 17, 42]
+epochs: 100
+workers: 12
+candidates:
+  - {id: imgsz640, imgsz: 640, batch: 16}
+  - {id: imgsz768, imgsz: 768, batch: 12}
+  - {id: imgsz1024, imgsz: 1024, batch: 8}

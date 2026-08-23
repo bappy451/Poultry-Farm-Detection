@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 . (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "windows_common.ps1")
@@ -11,7 +11,7 @@ Usage:
 What it does:
   - builds NAIP train and validation loaders
   - trains a Sparse Masked Modeling (SparK) SSL run
-  - supports hierarchical CNN backbones (ResNet50, YOLO CSPDarkNet)
+  - supports the verified sparse ResNet50 SparK encoder
   - appends every run to one project log file by default
 
 Options:
@@ -19,7 +19,7 @@ Options:
 
 Examples:
   .\scripts\train_spark.ps1 --data-root .\tmp\test_jpg --output-dir .\runs\spark-smoke --batch-size 4 --backbone-type resnet50 --precision bf16 --device gpu --verbose
-  .\scripts\train_spark.ps1 --data-root .\tmp\test_jpg --output-dir .\runs\spark-yolo --batch-size 4 --backbone-type cspdarknet --mask-ratio 0.75 --epochs 10 --verbose
+  .\scripts\train_spark.ps1 --data-root .\tmp\test_jpg --output-dir .\runs\spark-resnet --batch-size 4 --backbone-type resnet50 --mask-ratio 0.75 --epochs 10 --verbose
 '@ | Write-Output
 }
 
@@ -35,7 +35,7 @@ $showUsage = $false
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $forwardArgs = New-Object System.Collections.Generic.List[string]
 $dataRoot = "E:\NAIP_Dataset_PH"
-$outputDir = "runs\spark_pretrain_yolo11l"
+$outputDir = "runs\spark_pretrain_resnet50"
 
 $index = 0
 while ($index -lt $originalArgs.Count) {
@@ -104,14 +104,14 @@ while ($index -lt $originalArgs.Count) {
 }
 
 $defaultArgs = @(
-    "--backbone-type", "yolo11l",
-    "--batch-size", "128",
+    "--backbone-type", "resnet50",
+    "--batch-size", "8",
     "--epochs", "300",
     "--epoch-size", "2500",
     "--precision", "bf16",
     "--learning-rate", "0.0002",
     "--mask-ratio", "0.65",
-    "--num-workers", "16"
+    "--num-workers", "4"
 )
 
 for ($i = 0; $i -lt $defaultArgs.Count; $i += 2) {
@@ -166,3 +166,4 @@ finally {
 }
 
 exit $exitCode
+

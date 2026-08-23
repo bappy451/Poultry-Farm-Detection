@@ -1,62 +1,76 @@
-import os
 import argparse
+import os
+from pathlib import Path
+from typing import Any
+
 import torch
 from ultralytics import YOLO
 
-def extract_backbone(distill_ckpt_path):
-    print(f"Loading distilled checkpoint from {distill_ckpt_path}")
-    ckpt = torch.load(distill_ckpt_path, map_location='cpu')
-    student_state = ckpt['model'] if 'model' in ckpt else ckpt
-    
-    # Extract only the backbone weights, strip "backbone." prefix
-    backbone_state = {}
-    for k, v in student_state.items():
-        if k.startswith('backbone.'):
-            backbone_state[k.replace('backbone.', '')] = v
-            
-    print(f"Extracted {len(backbone_state)} layers from the distilled backbone.")
-    return backbone_state
+from poultry_geo.distill_models import (
+    DISTILLATION_ARTIFACT_FORMAT,
+    export_ultralytics_backbone_state,
+    validate_backbone_compatibility,
+)
 
-def main():
-    parser = argparse.ArgumentParser(description="Train YOLO on Poultry Dataset using Distilled Backbone")
-    parser.add_argument("--distill-ckpt", type=str, required=True, help="Path to the distilled last.pt")
-    parser.add_argument("--data", type=str, required=True, help="Path to poultry.yaml dataset config")
-    parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
-    parser.add_argument("--imgsz", type=int, default=640, help="Image size")
-    parser.add_argument("--batch", type=int, default=16, help="Batch size")
-    parser.add_argument("--model-cfg", type=str, default="yolo11n.yaml", help="YOLO architecture config (e.g. yolo11n.yaml)")
-    parser.add_argument("--project", type=str, default="runs/poultry", help="Project output dir")
-    parser.add_argument("--name", type=str, default="distilled_run", help="Run name")
-    
-    args = parser.parse_args()
-    
-    # 1. Initialize YOLO from scratch
-    print(f"Initializing fresh YOLO model from {args.model_cfg}")
-    model = YOLO(args.model_cfg)
-    
-    # 2. Load distilled backbone weights
-    backbone_weights = extract_backbone(args.distill_ckpt)
-    
-    # YOLO's backbone is located in model.model (the nn.Module)
-    # We load the weights strictly for the matching layers
-    missing, unexpected = model.model.load_state_dict(backbone_weights, strict=False)
-    
-    print(f"Loaded distilled backbone weights. Missing (mostly neck/head): {len(missing)}, Unexpected: {len(unexpected)}")
-    
-    # 3. Train on Poultry Dataset
-    print(f"Starting downstream training on {args.data}")
-    results = model.train(
-        data=args.data,
-        epochs=args.epochs,
-        imgsz=args.imgsz,
-        batch=args.batch,
-        project=args.project,
-        name=args.name,
-        pretrained=False # Crucial: Don't overwrite our distilled weights with COCO!
+
+def extract_backbone(distill_path: str) -> tuple[dict[str, torch.Tensor], dict[str, Any]]:
+    """Load a v2 portable artifact or safely translate a legacy training checkpoint."""
+    path = Path(distill_path)
+    print(f"Loading distilled checkpoint from {path}")
+    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    if not isinstance(checkpoint, dict):
+        raise ValueError("Distillation checkpoint must be a dictionary.")
+    if checkpoint.get("format") == DISTILLATION_ARTIFACT_FORMAT:
+        state = checkpoint.get("backbone_state_dict")
+        if not isinstance(state, dict):
+            raise ValueError("Distillation artifact has no backbone_state_dict.")
+        config = {"student_model": checkpoint.get("student_model"), **checkpoint.get("metadata", {})}
+        return state, config
+    raise ValueError(
+        "This is a legacy distillation checkpoint, not a v2 portable backbone artifact. "
+        "It may have been trained with the old classifier-based student and is not a valid "
+        "initialization for the COCO-versus-distillation experiment. Re-run train-distill and "
+        "use yolo_backbone_distilled_best.pt."
     )
-    
-    print("Training complete!")
-    print(f"Results saved to {os.path.join(args.project, args.name)}")
-    
+
+
+def load_distilled_backbone(model: YOLO, backbone_weights: dict[str, torch.Tensor]) -> int:
+    """Load only after every expected detection-backbone tensor has been verified."""
+    compatible = validate_backbone_compatibility(model.model.state_dict(), backbone_weights)
+    missing, unexpected = model.model.load_state_dict(compatible, strict=False)
+    if unexpected:
+        raise RuntimeError(f"Unexpected keys after validated backbone load: {unexpected}")
+    print(f"Loaded all {len(compatible)} distilled backbone tensors; neck/head remain randomly initialized.")
+    return len(compatible)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Fine-tune a YOLO detector from an exactly compatible distilled backbone")
+    parser.add_argument("--distill-ckpt", required=True, help="Path to yolo_backbone_distilled_best.pt (preferred) or a legacy checkpoint")
+    parser.add_argument("--data", required=True, help="Path to poultry.yaml dataset config")
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--imgsz", type=int, default=640)
+    parser.add_argument("--batch", type=int, default=16)
+    parser.add_argument("--model-cfg", default=None, help="Must match the distilled student YAML; inferred from v2 artifact when omitted")
+    parser.add_argument("--project", default="runs/poultry")
+    parser.add_argument("--name", default="distilled_run")
+    args = parser.parse_args()
+
+    backbone_weights, metadata = extract_backbone(args.distill_ckpt)
+    artifact_model = metadata.get("student_model")
+    model_cfg = args.model_cfg or artifact_model
+    if not model_cfg:
+        raise ValueError("Legacy checkpoint lacks student_model; pass --model-cfg explicitly.")
+    if artifact_model and args.model_cfg and args.model_cfg != artifact_model:
+        raise ValueError(f"--model-cfg={args.model_cfg} does not match distilled student_model={artifact_model}.")
+    print(f"Initializing exactly compatible YOLO detector from {model_cfg}")
+    model = YOLO(model_cfg)
+    load_distilled_backbone(model, backbone_weights)
+    print(f"Starting downstream training on {args.data}")
+    model.train(data=args.data, epochs=args.epochs, imgsz=args.imgsz, batch=args.batch,
+                project=args.project, name=args.name, pretrained=False)
+    print(f"Training complete. Results saved to {os.path.join(args.project, args.name)}")
+
+
 if __name__ == "__main__":
     main()

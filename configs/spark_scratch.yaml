@@ -33,7 +33,7 @@ runtime:
   epochs: 300
 
 grid_search:
-  model_name: ["yolo11l"]
+  model_name: ["resnet50"]
 
   # === Core change: random init ===
   pretrained: [false]

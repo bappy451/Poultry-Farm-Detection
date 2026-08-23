@@ -1,0 +1,25 @@
+# Publication-clean full-AL YOLO11l-OBB baseline at the previous 640x640 setting.
+# Development uses only the deduplicated train/validation manifests. The AL test
+# split is read only during the explicit test phase of the runner.
+study_name: full_al_640_baseline_v1
+output_dir: runs/full_al_640_baseline_v1
+
+data:
+  training: configs/poultry_clean_label_subsets/poultry_clean_100percent_trainval_only.yaml
+  final_test: temp/poultry_houses_test/data.yaml
+  final_test_split: test
+  init_model: yolo11l-obb.pt
+
+training:
+  seeds: [7, 17, 42]
+  epochs: 100
+  imgsz: 640
+  batch: 16
+  workers: 12
+  device: '0'
+  lr0: 0.001
+  weight_decay: 0.0005
+
+selection:
+  metric: metrics/mAP50-95(B)
+  validation_only: true

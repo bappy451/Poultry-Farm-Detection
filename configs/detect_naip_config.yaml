@@ -31,6 +31,8 @@ input:
     - ".tif"
     - ".tiff"
   recursive: true                # Search subdirectories
+  # Required for uint16/float imagery; one fixed range for the entire campaign.
+  # normalization_range: [0, 255]
 
 # ------------------------------------------------------------------
 # Sliding-window tiling

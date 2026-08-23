@@ -1,0 +1,31 @@
+study_name: ssl_al_ms_anchored_dinov2_full_al_v1
+output_dir: runs/ssl_al_ms_anchored_dinov2_v1
+pretrain_config: configs/ssl_ms_anchored_dinov2_pretrain_v1.yaml
+ssl_artifact: runs/ssl_al_ms_anchored_dinov2_v1/00_ms_pretraining/anchored_ssl_backbone_best.pt
+
+data:
+  # Full clean AL training partition plus its internal AL validation partition.
+  training: configs/poultry_clean_label_subsets/poultry_clean_100percent.yaml
+  final_test: temp/poultry_houses_test/data.yaml
+  final_test_split: test
+  init_model: yolo11l-obb.pt
+
+training:
+  seeds: [7, 17, 42]
+  epochs: 100
+  imgsz: 1024
+  batch: 8
+  workers: 12
+  device: '0'
+  lr0: 0.001
+  weight_decay: 0.0005
+
+methods:
+  - baseline
+  - anchored_ssl
+
+selection:
+  metric: metrics/mAP50-95(B)
+  validation_only: true
+  require_all_seeds: true
+  minimum_mean_delta: 0.0

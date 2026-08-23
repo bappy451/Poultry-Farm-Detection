@@ -1,0 +1,30 @@
+# Corrected MS-only self-supervised pretraining with an explicitly trainable
+# YOLO backbone. No AL labels or final-test data are read.
+unlabeled_root: E:/NAIP_Dataset_PH/MS_tiles_512_256_jpg
+init_model: yolo11l-obb.pt
+output_dir: runs/ssl_al_ms_anchored_dinov2_v2/00_ms_pretraining
+
+sample_size: 250000
+val_fraction: 0.05
+subset_seed: 20260821
+crop_size: 448
+batch: 8
+workers: 4
+
+epochs: 30
+epoch_size: 1000
+val_batches: 100
+precision: bf16
+device: '0'
+
+teacher_model: vit_base_patch14_dinov2.lvd142m
+backbone_lr: 0.0001
+projector_lr: 0.001
+weight_decay: 0.05
+anchor_weight: 0.05
+warmup_epochs: 2
+clip_grad_norm: 1.0
+scale_weights:
+  p3: 0.5
+  p4: 1.0
+  p5: 1.0

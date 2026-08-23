@@ -13,7 +13,7 @@ runtime:
   epochs: 300
 
 grid_search:
-  model_name: ["yolo11l"]
+  model_name: ["resnet50"]
   learning_rate: [0.0004]
   mask_ratio: [0.7]
   precision: ["fp16"]

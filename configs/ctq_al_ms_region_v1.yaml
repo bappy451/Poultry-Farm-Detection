@@ -1,0 +1,12 @@
+# Alabama labels; Mississippi only provides unlabeled CTQ imagery.
+training_data: configs/poultry_clean_label_subsets/poultry_clean_10percent.yaml
+held_out_test_data: temp/poultry_houses_test/data.yaml
+unlabeled_root: E:/NAIP_Dataset_PH/MS_tiles_512_256_jpg
+labeled_region: AL
+unlabeled_region: MS
+exact_audit: runs/ctq_development_v5_run1/exact_image_only_audit.json
+region_audit_output: runs/ctq_al_ms_v1/al_ms_region_audit.json
+
+# The existing dataset organization used for all selection:
+# 4359 clean AL train images -> fixed 10% labeled manifest; 465 AL val images.
+# The 702 AL test images remain outside all selection and CTQ training stages.

@@ -1,0 +1,105 @@
+# Validation-gated publication study for semi-supervised YOLO11l-OBB.
+#
+# The study deliberately separates three decisions:
+# 1. A one-seed pilot selects a pseudo-label configuration using validation only.
+# 2. The selected configuration is confirmed against supervised controls at 10%.
+# 3. The fixed configuration is evaluated across nested label fractions.
+#
+# The external test split is never used for configuration or checkpoint choice.
+
+study_name: poultry_ssl_pseudo_obb_publication_seeds_7_24_42_v2
+output_dir: runs/poultry_ssl_pseudo_obb_publication_seeds_7_24_42_v2
+
+data:
+  clean_data: configs/poultry_clean_raw_90_10.yaml
+  subset_config_dir: configs/poultry_clean_label_subsets
+  subset_output_dir: datasets/poultry_clean_label_subsets
+  final_test_data: temp/poultry_houses_test/data.yaml
+  final_test_split: test
+  unlabeled_root: 'E:\NAIP_Dataset_PH\MS_tiles_512_256_jpg'
+  # The selected unlabeled tiles are native 512x512 crops. The pseudo-loader
+  # samples native crops, so this prevents invalid larger candidate crops.
+  unlabeled_min_side: 512
+  model: yolo11l-obb.pt
+
+execution:
+  device: '0'
+  workers: 12
+  unlabeled_workers: 2
+  plots_on_final_test: false
+
+training:
+  # Identical supervised burn-in for every method within a seed/fraction.
+  baseline_epochs: 100
+  baseline_lr0: 0.001
+  baseline_weight_decay: 0.0005
+  # Equal-update supervised continuation control: 60 adaptation + 100 recovery.
+  matched_control_epochs: 160
+  matched_lr0: 0.0003
+  matched_weight_decay: 0.0005
+  adapt_epochs: 60
+  finetune_epochs: 100
+  adapt_lr0: 0.00001
+  finetune_lr0: 0.0003
+  batch: 16
+  unlabeled_batch: 16
+  test_batch: 32
+  imgsz: 640
+  unlabeled_imgsz: 448
+  unlabeled_limit: 250000
+  prefetch_factor: 2
+  pseudo_iou_threshold: 0.50
+  pseudo_class_margin: 0.05
+  pseudo_max_det: 100
+  pseudo_warmup_epochs: 5
+  pseudo_rampup_epochs: 10
+  feature_consistency_weight: 0.0
+  feature_rampup_epochs: 10
+  foreground_feature_gain: 3.0
+  ema_decay: 0.9998
+
+calibration:
+  # Fitted independently from each seed's labeled validation split.
+  precision_target: 0.90
+  iou_match: 0.50
+  min_predictions: 10
+  min_confidence: 0.50
+  max_confidence: 0.99
+  step: 0.01
+  fallback: 0.90
+
+pilot:
+  fraction_percent: 10
+  seed: 7
+  include_matched_control: true
+  # ``eligible_for_selection: false`` keeps the no-pseudo diagnostic in the
+  # ablation table but prevents the study from choosing a non-SSL method.
+  candidates:
+    - name: ema_no_pseudo
+      pseudo_obb_weight: 0.0
+      eligible_for_selection: false
+    - name: hard_pseudo_w002
+      pseudo_obb_weight: 0.02
+      eligible_for_selection: true
+    - name: hard_pseudo_w005
+      pseudo_obb_weight: 0.05
+      eligible_for_selection: true
+    - name: hard_pseudo_w010
+      pseudo_obb_weight: 0.10
+      eligible_for_selection: true
+    - name: hard_pseudo_w005_u512
+      pseudo_obb_weight: 0.05
+      unlabeled_imgsz: 512
+      eligible_for_selection: true
+
+confirmation:
+  fraction_percent: 10
+  seeds: [7, 24, 42]
+  include_matched_control: true
+
+label_efficiency:
+  fractions_percent: [1, 5, 10, 25, 50, 100]
+  seeds: [7, 24, 42]
+  # The 10% confirmation uses the same fixed configuration, seeds, and data,
+  # so its external-test rows are reused rather than trained a second time.
+  reuse_confirmation_for_10pct: true

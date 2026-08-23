@@ -95,11 +95,12 @@ class DINOLoss(nn.Module):
     @torch.no_grad()
     def update_center(self, teacher_logits: Sequence[torch.Tensor]) -> None:
         """EMA update of the prototype centering vector."""
-        # Use FP32 for precision in centering vector EMA
+        # Keep the collapse-control center in FP32 and synchronize it when DDP is active.
         batch_center = torch.cat(teacher_logits, dim=0).mean(dim=0, keepdim=True).float()
-        self.center.data = self.center.data.float()
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            torch.distributed.all_reduce(batch_center)
+            batch_center.div_(torch.distributed.get_world_size())
         self.center.mul_(self.center_momentum).add_((1.0 - self.center_momentum) * batch_center)
-        self.center.data = self.center.data.to(teacher_logits[0].dtype)
 
 
 class KoLeoLoss(nn.Module):
@@ -186,13 +187,13 @@ class iBOTPatchLoss(nn.Module):
 
 
 class CompositeDINOLoss(nn.Module):
-    """Combined DINO + iBOT + KoLeo objective for self-distillation."""
+    """DINO + KoLeo objective with an explicitly optional future iBOT pathway."""
 
     def __init__(
         self,
         out_dim: int = 65536,
         lambda_dino: float = 1.0,
-        lambda_ibot: float = 1.0,
+        lambda_ibot: float = 0.0,
         lambda_koleo: float = 0.1,
         warmup_teacher_temp: float = 0.04,
         teacher_temp: float = 0.07,

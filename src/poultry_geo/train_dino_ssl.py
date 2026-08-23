@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 from pathlib import Path
 from typing import Any, Dict
@@ -7,6 +8,7 @@ from typing import Any, Dict
 import torch
 
 from poultry_geo.dino import DINOMultiCropWrapper
+from poultry_geo.dino_checkpoint import DINO_CHECKPOINT_FORMAT
 from poultry_geo.dino_loss import CompositeDINOLoss
 from poultry_geo.ssl_models import PRECISION_DTYPES
 
@@ -95,12 +97,14 @@ def save_dino_checkpoint(
     config_dict = vars(config) if hasattr(config, "__dict__") else config
 
     checkpoint = {
+        "format": DINO_CHECKPOINT_FORMAT,
         "epoch": epoch,
         "student_backbone": model.student_backbone.state_dict(),
         "teacher_backbone": model.teacher_backbone.state_dict(),
         "student_head": model.student_head.state_dict(),
         "teacher_head": model.teacher_head.state_dict(),
         "centering_vector": loss_fn.dino_loss.center.cpu(),
+        "patch_centering_vector": loss_fn.ibot_loss.patch_center.cpu(),
         "optimizer": optimizer.state_dict(),
         "scaler": scaler.state_dict() if scaler is not None else None,
         "config": config_dict,
@@ -148,6 +152,9 @@ def load_dino_checkpoint(
     if loss_fn is not None and "centering_vector" in checkpoint:
         center_tensor = checkpoint["centering_vector"].to(loss_fn.dino_loss.center.device)
         loss_fn.dino_loss.center.copy_(center_tensor)
+    if loss_fn is not None and "patch_centering_vector" in checkpoint:
+        patch_center = checkpoint["patch_centering_vector"].to(loss_fn.ibot_loss.patch_center.device)
+        loss_fn.ibot_loss.patch_center.copy_(patch_center)
 
     if optimizer is not None and "optimizer" in checkpoint and checkpoint["optimizer"] is not None:
         optimizer.load_state_dict(checkpoint["optimizer"])
@@ -156,3 +163,39 @@ def load_dino_checkpoint(
         scaler.load_state_dict(checkpoint["scaler"])
 
     return checkpoint
+
+
+def cosine_warmup_value(
+    step: int,
+    total_steps: int,
+    start_value: float,
+    end_value: float,
+    warmup_steps: int = 0,
+) -> float:
+    """Linear warmup followed by cosine interpolation, evaluated per optimizer step."""
+    if total_steps <= 0:
+        return end_value
+    if warmup_steps > 0 and step < warmup_steps:
+        return start_value * float(step + 1) / float(warmup_steps)
+    progress = (step - warmup_steps) / max(1, total_steps - warmup_steps - 1)
+    progress = min(1.0, max(0.0, progress))
+    return end_value + 0.5 * (start_value - end_value) * (1.0 + math.cos(math.pi * progress))
+
+
+def apply_dino_optimizer_schedule(
+    optimizer: torch.optim.Optimizer,
+    *,
+    step: int,
+    total_steps: int,
+    learning_rate: float,
+    weight_decay: float,
+    weight_decay_end: float,
+    warmup_steps: int,
+) -> tuple[float, float]:
+    """Apply the documented DINO learning-rate and weight-decay schedules."""
+    lr = cosine_warmup_value(step, total_steps, learning_rate, 0.0, warmup_steps)
+    wd = cosine_warmup_value(step, total_steps, weight_decay, weight_decay_end, 0)
+    for group in optimizer.param_groups:
+        group["lr"] = lr
+        group["weight_decay"] = wd
+    return lr, wd

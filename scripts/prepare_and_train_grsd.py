@@ -1,12 +1,12 @@
-"""
+﻿"""
 prepare_and_train_grsd.py
 =========================
 1. Automatically converts the GRSD (Greenhouse Remote Sensing Dataset) from 
    its native XML (robndbox) format to Ultralytics YOLO OBB format.
 2. Splits the dataset into Train and Val sets (80/20).
 3. Trains and evaluates two YOLO11l-OBB models for 50 epochs:
-     Run A — Official Ultralytics ImageNet weights
-     Run B — Our SparK-from-scratch backbone
+     Run A â€” Official Ultralytics ImageNet weights
+     Run B â€” Our SparK-from-scratch backbone
 4. Saves results in `runs/downstream_grsd`.
 """
 
@@ -24,11 +24,11 @@ from pathlib import Path
 import torch
 from tqdm import tqdm
 
-# ── Project root ──────────────────────────────────────────────────────────────
+# â”€â”€ Project root â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-# ── Source and Target Paths ───────────────────────────────────────────────────
+# â”€â”€ Source and Target Paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 SOURCE_DIR = Path(r"C:\Users\mza0288\Documents\Poultry-Farm-Detection\temp\the greenhouse remote sensing image dataset (GRSD)")
 TARGET_DIR = ROOT / "datasets" / "GRSD_YOLO"
 DATA_YAML = ROOT / "configs" / "grsd_obb.yaml"
@@ -40,10 +40,10 @@ SPARK_BACKBONE_PT = (
     / "trained_models"
     / "spark-scratch"
     / "af8e64a7ed89_yolo11l_fp16"
-    / "backbone_dense_ep299.pt"
+    / "backbone_dense_best.pt"
 )
 
-# ── Data Preparation Function ─────────────────────────────────────────────────
+# â”€â”€ Data Preparation Function â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def convert_grsd_to_yolo_obb():
     """Converts the GRSD XML files to YOLO OBB format and structures the dataset."""
     if (TARGET_DIR / "images").exists() and (TARGET_DIR / "labels").exists() and DATA_YAML.exists():
@@ -157,7 +157,7 @@ names:
         f.write(yaml_content)
     print(f"[Dataset] YAML created at {DATA_YAML}")
 
-# ── Shared fine-tuning hyperparameters ───────────────────────────────────────
+# â”€â”€ Shared fine-tuning hyperparameters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 COMMON_TRAIN_ARGS: dict = dict(
     data=str(DATA_YAML),
     epochs=50,          # 50-epoch budget
@@ -188,24 +188,10 @@ COMMON_TRAIN_ARGS: dict = dict(
 
 
 def _load_spark_weights_into_yolo(model, backbone_pt: Path) -> None:
-    print(f"\n[SparK] Loading backbone from: {backbone_pt}")
-    backbone_state = torch.load(str(backbone_pt), map_location="cpu", weights_only=True)
-
-    yolo_state = model.model.state_dict()
-    matched, skipped = 0, 0
-    patch: dict = {}
-    for key, tensor in backbone_state.items():
-        if key in yolo_state and yolo_state[key].shape == tensor.shape:
-            patch[key] = tensor
-            matched += 1
-        else:
-            skipped += 1
-
-    yolo_state.update(patch)
-    model.model.load_state_dict(yolo_state, strict=False)
-    print(f"[SparK] Injected {matched} tensors  |  Skipped {skipped} tensors")
-
-
+    raise RuntimeError(
+        "SparK-to-YOLO transfer is disabled: the supported SparK encoder is ResNet50, "
+        "and this project has no verified architecture-preserving YOLO adapter."
+    )
 def _extract_metrics(run_dir: Path) -> dict:
     results_csv = run_dir / "results.csv"
     if not results_csv.exists():
@@ -263,11 +249,11 @@ def main() -> None:
 
     results: list[dict] = []
 
-    # ── Run A: Official ImageNet baseline ─────────────────────────────────────
+    # â”€â”€ Run A: Official ImageNet baseline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     metrics_a = run_experiment("imagenet_baseline", use_spark=False)
     results.append(metrics_a)
 
-    # ── Run B: SparK from scratch ─────────────────────────────────────────────
+    # â”€â”€ Run B: SparK from scratch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     metrics_b = run_experiment("spark_scratch", use_spark=True)
     results.append(metrics_b)
 

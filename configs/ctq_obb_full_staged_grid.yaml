@@ -1,0 +1,53 @@
+# Full CTQ-OBB campaign specification. Final test data is intentionally omitted:
+# candidates are selected exclusively by validation mAP50-95.
+data: configs/poultry_clean_label_subsets/poultry_clean_10percent.yaml
+unlabeled_root: 'E:\NAIP_Dataset_PH\MS_tiles_512_256_jpg'
+tile_manifest: runs/ctq_obb_full_grid/tile_manifest.csv
+tile_stride: 256
+model: yolo11l-obb.pt
+output_dir: runs/ctq_obb_full_grid
+screen_seeds: [7, 24]
+confirmation_seeds: [7, 24, 42]
+selection_metric: metrics/mAP50-95(B)
+promotion_delta: 0.01
+
+# Every later stage uses only the previous stage's promoted candidate(s).
+stages:
+  - id: quality_ignore
+    candidates:
+      - {quality_alpha: 1.0, pos_threshold: 0.90, neg_threshold: 0.30}
+      - {quality_alpha: 2.0, pos_threshold: 0.90, neg_threshold: 0.30}
+      - {quality_alpha: 2.0, pos_threshold: 0.93, neg_threshold: 0.30}
+  - id: rotation_equivariance
+    depends_on: quality_ignore
+    candidates:
+      - {equivariance_loss: symmetric_kld, equivariance_weight: 0.01}
+      - {equivariance_loss: symmetric_kld, equivariance_weight: 0.025}
+      - {equivariance_loss: gwd, equivariance_weight: 0.01}
+  - id: geometry_precision
+    depends_on: rotation_equivariance
+    candidates:
+      - {geometry_loss: symmetric_kld, geometry_weight: 0.01}
+      - {geometry_loss: symmetric_kld, geometry_weight: 0.025}
+      - {geometry_loss: cyclic_corner, geometry_weight: 0.01}
+      - {geometry_loss: cyclic_corner, geometry_weight: 0.025}
+      - {geometry_loss: periodic_angle, geometry_weight: 0.01, angle_kappa: 1.0}
+  - id: breeder_classification
+    depends_on: geometry_precision
+    candidates:
+      - {gamma_pos: 0.0, gamma_neg: 2.0, breeder_weight: 1.25}
+      - {gamma_pos: 1.0, gamma_neg: 2.0, breeder_weight: 1.25}
+      - {gamma_pos: 1.0, gamma_neg: 4.0, breeder_weight: 1.50}
+  - id: boundary_censoring
+    depends_on: breeder_classification
+    candidates:
+      - {border_margin_px: 16, unconfirmed_border_weight: 0.0}
+      - {border_margin_px: 32, unconfirmed_border_weight: 0.0}
+      - {border_margin_px: 32, unconfirmed_border_weight: 0.25}
+  - id: cross_tile
+    depends_on: boundary_censoring
+    requires_tile_manifest: true
+    candidates:
+      - {cross_tile_weight: 0.01, cross_tile_loss: symmetric_kld}
+      - {cross_tile_weight: 0.025, cross_tile_loss: symmetric_kld}
+      - {cross_tile_weight: 0.01, cross_tile_loss: gwd}

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 
 set -euo pipefail
 
@@ -10,7 +10,7 @@ Usage:
 What it does:
   - builds NAIP train and validation loaders
   - trains a Sparse Masked Modeling (SparK) SSL run
-  - supports hierarchical CNN backbones (ResNet50, YOLO CSPDarkNet)
+  - supports the verified sparse ResNet50 SparK encoder
   - appends every run to one project log file by default
 
 Options:
@@ -18,7 +18,7 @@ Options:
 
 Examples:
   ./scripts/train_spark.sh --python "$CONDA_PREFIX/bin/python" --data-root ./tmp/test_jpg --output-dir ./runs/spark-smoke --batch-size 4 --backbone-type resnet50 --precision bf16 --device cuda --verbose
-  ./scripts/train_spark.sh --python "$CONDA_PREFIX/bin/python" --data-root ./tmp/test_jpg --output-dir ./runs/spark-yolo --batch-size 4 --backbone-type cspdarknet --mask-ratio 0.75 --epochs 10 --verbose
+  ./scripts/train_spark.sh --python "$CONDA_PREFIX/bin/python" --data-root ./tmp/test_jpg --output-dir ./runs/spark-resnet --batch-size 4 --backbone-type resnet50 --mask-ratio 0.75 --epochs 10 --verbose
 EOF
 }
 

@@ -33,14 +33,13 @@ datasets:
     yaml: "configs/dota_obb.yaml"
 
 models:
-  - name: "standard_mae"
-    init_strategy: "mae"
-    pretrained_weights: "trained_models/baselines/standard_mae_vit_base.pt"
-    description: "ViT-Base/16 initialized with Standard MAE reconstructive weights"
-  - name: "satmae"
-    init_strategy: "satmae"
-    pretrained_weights: "trained_models/baselines/satmae_vit_base.pt"
-    description: "ViT-Base/16 initialized with SatMAE domain-specific weights"
+  - name: "dino_pretrained"
+    init_strategy: "dino"
+    description: "ViT-Base/16 initialized with DINO self-supervised checkpoint"
+  - name: "imagenet_baseline"
+    init_strategy: "imagenet"
+    description: "ViT-Base/16 initialized with standard ImageNet supervised weights"
+
   - name: "random_init"
     init_strategy: "random"
     description: "ViT-Base/16 initialized from scratch with random weights"

@@ -1,24 +1,16 @@
-# dota_scratch_compare.yaml
-# =========================
-# Three-way comparison of YOLO11l-OBB for DOTA aerial object detection:
-#   1. imagenet_baseline  — Official Ultralytics ImageNet weights (baseline)
-#   2. random_init        — Random weight initialization from scratch (ablation)
-#   3. spark_scratch_lpft — Our SparK Trained-from-Scratch backbone with LP-FT + LLRD (ours)
-#
-# All results and comparison_results.csv will be saved to: runs/dota_scratch_compare
-
 paths:
-  spark_backbone_pt: "runs/spark_pretrain_yolo11l/backbone_dense_ep299.pt"
-  data_yaml: "configs/dota_80_10_10.yaml"
-  output_dir: "runs/dota_scratch_compare"
+  distilled_backbone_pt: runs/spark-yolo/yolo11l_spark_latest.pt
+  model_cfg: yolo11l-obb.yaml
+  pretrained_model: yolo11l-obb.pt
+  data_yaml: configs/dota_80_10_10.yaml
+  output_dir: runs/dota_dino_distill_compare_verified
 repeats: 3
-
 training:
-  epochs: 20             # 20-epoch budget matching paper Table 2
+  epochs: 20
   imgsz: 640
   batch: 16
   device: 0
-  optimizer: "AdamW"
+  optimizer: AdamW
   lr0: 0.001
   lrf: 0.01
   warmup_epochs: 3
@@ -39,23 +31,10 @@ training:
   verbose: true
   exist_ok: true
   plots: true
-
-lpft_llrd:
-  lp_epochs: 5           # 5 epochs Linear Probing (15 epochs end-to-end FT)
-  layer_decay: 0.75      # LLRD alpha = 0.75
-
 experiments:
-  - name: "imagenet_baseline"
-    use_spark: false
-    is_random: false
-    use_lpft_llrd: false
-
-  - name: "random_init"
-    use_spark: false
-    is_random: true
-    use_lpft_llrd: false
-
-  - name: "spark_scratch_lpft"
-    use_spark: true
-    is_random: false
-    use_lpft_llrd: true
+- name: spark_yolo
+  initialization: spark_yolo
+- name: ultralytics_pretrained
+  initialization: ultralytics_pretrained
+- name: random_init
+  initialization: random_init

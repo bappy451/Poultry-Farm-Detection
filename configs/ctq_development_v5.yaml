@@ -1,0 +1,33 @@
+# Provenance-gated CTQ development.  No phase can silently infer source IDs.
+training_data: configs/poultry_clean_label_subsets/poultry_clean_10percent.yaml
+locked_test_data: temp/poultry_houses_test/data.yaml
+locked_test_split: test
+unlabeled_root: 'E:\NAIP_Dataset_PH\MS_tiles_512_256_jpg'
+publication_protocol: runs/ctq_publication_v2_run1
+teacher_method: baseline
+output_dir: runs/ctq_development_v5_run1
+
+# Replace null with the completed strict CSV templates using real original
+# source raster/acquisition IDs. Never infer them from Roboflow export names.
+locked_test_source_manifest: null
+labeled_source_manifest: null
+
+diagnostics:
+  split: val
+  thresholds: '0.75,0.80,0.85,0.90,0.93'
+  precision_target: 0.90
+  min_predictions: 20
+  fallback: 0.93
+  iou_match: 0.50
+  imgsz: 640
+  batch: 16
+  workers: 12
+  device: '0'
+
+test_v2:
+  output_root: datasets/poultry_source_disjoint_v2
+  output_data: configs/poultry_source_disjoint_v2.yaml
+  test_fraction: 0.15
+  val_fraction: 0.10
+  split_seed: 2026
+  unlabeled_catalog: runs/ctq_development_v5_run1/unlabeled_without_test_v2_sources.csv

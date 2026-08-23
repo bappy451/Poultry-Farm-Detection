@@ -1,0 +1,40 @@
+# Detector-level EMA pseudo-OBB experiment.
+# Paths are resolved relative to the repository root by run_ema_pseudo_obb.py.
+data: configs/poultry_clean_label_subsets/poultry_clean_10percent.yaml
+final_test_data: temp/poultry_houses_test/data.yaml
+final_test_split: test
+unlabeled_root: 'E:\NAIP_Dataset_PH\MS_tiles_512_256_jpg'
+model: yolo11l-obb.pt
+output_dir: runs/ema_foreground_feature_clean_10pct
+seeds: [0, 7, 42]
+
+# Match the validated EMA publication throughput preset.
+adapt_epochs: 60
+finetune_epochs: 100
+batch: 16
+unlabeled_batch: 16
+test_batch: 32
+imgsz: 640
+unlabeled_imgsz: 448
+workers: 12
+unlabeled_workers: 2
+unlabeled_limit: 250000
+prefetch_factor: 2
+device: "0"
+
+# Detector-level pseudo-label loss.
+pseudo_obb_weight: 0.0
+pseudo_thresholds: "0.90,0.90"
+pseudo_iou_threshold: 0.50
+pseudo_max_det: 100
+pseudo_warmup_epochs: 5
+pseudo_rampup_epochs: 10
+
+# Set pseudo_obb_weight=0 and feature_consistency_weight=0.05 for the
+# foreground-weighted feature-only control. Set both positive for the
+# combined variant.
+feature_consistency_weight: 0.05
+feature_rampup_epochs: 10
+foreground_feature_gain: 3.0
+ema_decay: 0.9998
+

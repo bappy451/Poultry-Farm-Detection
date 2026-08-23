@@ -1,0 +1,26 @@
+# Read-only diagnostic: no training and no AL test data access.
+protocol_dir: runs/ctq_al_ms_v1/reliable_balanced_ctq_imgsz1024_ctqbatch4_tile512
+unlabeled_root: E:/NAIP_Dataset_PH/MS_tiles_512_256_jpg
+output_dir: runs/ctq_al_ms_v1/pseudo_retention_diagnostic_v1
+seeds: [7, 17, 42]
+
+# A deterministic, reservoir-sampled MS subset shared by every seed.  Every
+# MS tile is 512x512, so the diagnostic sees the same image geometry as CTQ.
+sample_size: 2048
+subset_seed: 20260820
+imgsz: 512
+batch: 8
+workers: 4
+device: '0'
+
+# These reproduce the frozen candidate's pseudo-label construction.
+pseudo_iou_threshold: 0.5
+pseudo_class_margin: 0.05
+teacher_jitter_views: 2
+teacher_jitter_iou: 0.70
+teacher_jitter_agreement: 1.0
+
+# Comparators measure the contribution of each reliability decision. They are
+# diagnostics only; they do not select a new candidate or use test labels.
+comparison_agreement: 0.5
+comparison_iou: 0.5

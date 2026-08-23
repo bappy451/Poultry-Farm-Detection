@@ -1,0 +1,7 @@
+path: C:\Users\mza0288\Documents\Poultry-Farm-Detection\datasets\grsd_nested\5percent
+train: images/train
+val: images/val
+test: images/test
+nc: 1
+names:
+  0: plastic greenhouse

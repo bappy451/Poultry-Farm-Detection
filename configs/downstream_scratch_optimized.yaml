@@ -16,7 +16,7 @@
 # All results will be saved to: runs/downstream_scratch_hyperparameter
 
 paths:
-  spark_backbone_pt: "trained_models/spark-scratch/af8e64a7ed89_yolo11l_fp16/backbone_dense_ep299.pt"
+  spark_backbone_pt: "trained_models/spark-scratch/af8e64a7ed89_yolo11l_fp16/backbone_dense_best.pt"
   data_yaml: "configs/poultry_obb.yaml"
   output_dir: "runs/downstream_scratch_hyperparameter"
 

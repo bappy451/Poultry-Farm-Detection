@@ -1,33 +1,18 @@
-# downstream_scratch_compare.yaml
-# ===============================
-# Configuration for comparing three YOLO11l-OBB poultry house detection models:
-#   1. imagenet_baseline  — Official Ultralytics ImageNet weights (baseline)
-#   2. random_init        — Random weight initialization from scratch (ablation)
-#   3. spark_scratch_lpft — Our SparK Trained-from-Scratch backbone with LP-FT + LLRD (ours)
-#
-# LP-FT (Linear Probing followed by End-to-End Fine-Tuning) + LLRD:
-#   - Stage 1 (Epochs 1 to lp_epochs):
-#       Linear Probing where backbone layers (0 to 10) are FROZEN (requires_grad=False).
-#       Only the detection neck and OBB classification/regression heads are trained.
-#   - Stage 2 (Epochs lp_epochs+1 to epochs):
-#       End-to-End Fine-Tuning where backbone layers are UNFROZEN (requires_grad=True).
-#       All parameters are fine-tuned together using Layer-Wise Learning Rate Decay (LLRD)
-#       with alpha = layer_decay, protecting early visual representations.
-
 paths:
-  spark_backbone_pt: "runs/spark_pretrain_yolo11l/backbone_dense_ep299.pt"
-  data_yaml: "configs/poultry_80_10_10.yaml"
-  output_dir: "runs/downstream_scratch"
-repeats: 3
-
+  distilled_backbone_pt: runs/spark-yolo/yolo11l_spark_latest.pt
+  model_cfg: yolo11l-obb.yaml
+  pretrained_model: yolo11l-obb.pt
+  data_yaml: configs/poultry_80_10_10.yaml
+  output_dir: runs/downstream_dino_distill_compare_verified
+repeats: 5
 training:
-  epochs: 50             # 50-epoch budget for data/compute efficiency comparison
+  epochs: 50
   imgsz: 640
   batch: 16
-  device: 0              # Primary GPU
-  optimizer: "AdamW"
+  device: 0
+  optimizer: AdamW
   lr0: 0.001
-  lrf: 0.01              # Cosine decay target (final_lr = lr0 * lrf)
+  lrf: 0.01
   warmup_epochs: 3
   cos_lr: true
   weight_decay: 0.0005
@@ -45,23 +30,10 @@ training:
   verbose: true
   exist_ok: true
   plots: true
-
-lpft_llrd:
-  lp_epochs: 5           # Number of initial Linear Probing epochs (backbone frozen)
-  layer_decay: 0.75      # LLRD geometric decay factor alpha across backbone layers (0-10)
-
 experiments:
-  - name: "imagenet_baseline"
-    use_spark: false
-    is_random: false
-    use_lpft_llrd: false
-
-  - name: "random_init"
-    use_spark: false
-    is_random: true
-    use_lpft_llrd: false
-
-  - name: "spark_scratch_lpft_300ep"
-    use_spark: true
-    is_random: false
-    use_lpft_llrd: true
+- name: spark_yolo
+  initialization: spark_yolo
+- name: ultralytics_pretrained
+  initialization: ultralytics_pretrained
+- name: random_init
+  initialization: random_init

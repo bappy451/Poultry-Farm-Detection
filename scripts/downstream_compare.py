@@ -1,10 +1,10 @@
-"""
+﻿"""
 downstream_compare.py
 =====================
 Trains and evaluates two YOLO11l-OBB models on the poultry house detection task:
 
-  Run A  — Official Ultralytics ImageNet weights  (baseline)
-  Run B  — Our SparK-pretrained backbone           (ours)
+  Run A  â€” Official Ultralytics ImageNet weights  (baseline)
+  Run B  â€” Our SparK-pretrained backbone           (ours)
 
 Both runs are trained identically (same hyperparameters, same data splits) so
 any difference in final mAP is directly attributable to the pretraining strategy.
@@ -16,7 +16,7 @@ Usage
 Output
 ------
   runs/downstream/
-    imagenet/          -- Ultralytics YOLO run dir (weights, results.csv, …)
+    imagenet/          -- Ultralytics YOLO run dir (weights, results.csv, â€¦)
     spark_pretrained/  -- SparK-pretrained run dir
   runs/downstream/comparison_results.csv
 """
@@ -31,22 +31,22 @@ from pathlib import Path
 
 import torch
 
-# ── Project root (two levels up from this script) ────────────────────────────
+# â”€â”€ Project root (two levels up from this script) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
+# â”€â”€ Paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 SPARK_BACKBONE_PT = (
     ROOT
     / "trained_models"
     / "spark-search_new"
     / "5d1be34f2942_yolo11l_fp16"
-    / "backbone_dense_ep299.pt"
+    / "backbone_dense_best.pt"
 )
 DATA_YAML = ROOT / "configs" / "poultry_obb.yaml"
 OUTPUT_DIR = ROOT / "runs" / "downstream"
 
-# ── Shared fine-tuning hyperparameters ───────────────────────────────────────
+# â”€â”€ Shared fine-tuning hyperparameters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 COMMON_TRAIN_ARGS: dict = dict(
     data=str(DATA_YAML),
     epochs=100,
@@ -77,33 +77,10 @@ COMMON_TRAIN_ARGS: dict = dict(
 
 
 def _load_spark_weights_into_yolo(model, backbone_pt: Path) -> None:
-    """
-    Surgically inject our SparK-pretrained backbone weights into a freshly
-    created YOLO11l model.
-
-    The ``backbone_dense_ep*.pt`` file produced by ``save_spark_checkpoint``
-    contains the translated dense state-dict (keys matching Ultralytics naming).
-    We load it with strict=False so the detection heads (which were never part
-    of the SparK pretraining) keep their random Ultralytics initialisation.
-    """
-    print(f"\n[SparK] Loading backbone from: {backbone_pt}")
-    backbone_state = torch.load(str(backbone_pt), map_location="cpu", weights_only=True)
-
-    yolo_state = model.model.state_dict()
-    matched, skipped = 0, 0
-    patch: dict = {}
-    for key, tensor in backbone_state.items():
-        if key in yolo_state and yolo_state[key].shape == tensor.shape:
-            patch[key] = tensor
-            matched += 1
-        else:
-            skipped += 1
-
-    yolo_state.update(patch)
-    model.model.load_state_dict(yolo_state, strict=False)
-    print(f"[SparK] Injected {matched} tensors  |  Skipped {skipped} tensors")
-
-
+    raise RuntimeError(
+        "SparK-to-YOLO transfer is disabled: the supported SparK encoder is ResNet50, "
+        "and this project has no verified architecture-preserving YOLO adapter."
+    )
 def _extract_metrics(run_dir: Path) -> dict:
     """Read the final-epoch metrics from Ultralytics results.csv."""
     results_csv = run_dir / "results.csv"
@@ -165,15 +142,15 @@ def main() -> None:
 
     results: list[dict] = []
 
-    # ── Run A: Official ImageNet baseline ─────────────────────────────────────
+    # â”€â”€ Run A: Official ImageNet baseline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     metrics_a = run_experiment("imagenet_baseline", use_spark=False)
     results.append(metrics_a)
 
-    # ── Run B: SparK pretrained ───────────────────────────────────────────────
+    # â”€â”€ Run B: SparK pretrained â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     metrics_b = run_experiment("spark_pretrained", use_spark=True)
     results.append(metrics_b)
 
-    # ── Print comparison table ────────────────────────────────────────────────
+    # â”€â”€ Print comparison table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     print("\n" + "=" * 70)
     print("  COMPARISON RESULTS")
     print("=" * 70)
@@ -195,7 +172,7 @@ def main() -> None:
         )
         print(row)
 
-    # ── Save comparison CSV ───────────────────────────────────────────────────
+    # â”€â”€ Save comparison CSV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     out_csv = OUTPUT_DIR / "comparison_results.csv"
     if results:
         fieldnames = list(results[0].keys())
@@ -205,7 +182,7 @@ def main() -> None:
             writer.writerows(results)
     print(f"\nResults saved to: {out_csv}")
 
-    # ── Quick delta ───────────────────────────────────────────────────────────
+    # â”€â”€ Quick delta â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     try:
         map50_a = float(metrics_a.get("metrics/mAP50(B)", "nan"))
         map50_b = float(metrics_b.get("metrics/mAP50(B)", "nan"))

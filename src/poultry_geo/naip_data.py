@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -21,6 +22,43 @@ PRECISION_DTYPES = {
 }
 
 
+class FileIndex(Sequence[Path]):
+    """Compact, pickle-friendly path sequence with normal list-like semantics.
+
+    Internally paths stay in a NumPy string buffer so Windows DataLoader workers do
+    not pickle millions of Python objects. Public iteration/indexing returns Path
+    objects, preserving the original dataset API and useful equality semantics.
+    """
+
+    def __init__(self, paths: Sequence[str | Path]) -> None:
+        self._paths = np.asarray([str(path) for path in paths], dtype=str)
+
+    def __len__(self) -> int:
+        return int(self._paths.shape[0])
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return [Path(str(path)) for path in self._paths[index]]
+        return Path(str(self._paths[index]))
+
+    def __iter__(self):
+        for path in self._paths:
+            yield Path(str(path))
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, FileIndex):
+            return bool(np.array_equal(self._paths, other._paths))
+        if isinstance(other, Sequence):
+            return list(self) == list(other)
+        return NotImplemented
+
+    def __getstate__(self):
+        return self._paths
+
+    def __setstate__(self, state) -> None:
+        self._paths = np.asarray(state, dtype=str)
+
+
 class NAIPDataset(Dataset[dict[str, Any]]):
     """Load nested NAIP tiles and apply synchronized tensor augmentations."""
 
@@ -33,6 +71,8 @@ class NAIPDataset(Dataset[dict[str, Any]]):
         augment: bool = True,
         files: Sequence[str | Path] | None = None,
         catalog_path: str | Path | None = None,
+        max_files: int | None = None,
+        subset_seed: int = 0,
     ) -> None:
         self.root = Path(root).expanduser().resolve()
         if not self.root.exists():
@@ -52,12 +92,17 @@ class NAIPDataset(Dataset[dict[str, Any]]):
         self.precision = precision
         self.augment = bool(augment)
         self.catalog_path = Path(catalog_path) if catalog_path else None
-        
-        # Wrapping in a numpy array is CRITICAL for Windows PyTorch DataLoader performance.
-        # Pickling a 10M element python list to 4 workers takes minutes and crashes memory.
-        # By using dtype=str (fixed-length Unicode), it serializes instantly as a raw byte buffer!
-        self.files = np.array(self._resolve_files(files), dtype=str)
-        
+        if max_files is not None and max_files <= 0:
+            raise ValueError("max_files must be a positive integer or None.")
+        self.max_files = int(max_files) if max_files is not None else None
+        self.subset_seed = int(subset_seed)
+
+        # A raw recursive NAIP tree can contain millions of tiles. Never retain the
+        # complete tree in a worker-pickled Dataset: Windows spawn would serialize
+        # several gigabytes and commonly fail with ``pickle data was truncated``.
+        # When max_files is set, _resolve_files uses bounded reservoir sampling.
+        self.files = FileIndex(self._resolve_files(files))
+
         self._expected_channels = channels or self._inspect_channel_count(str(self.files[0]))
 
     def __len__(self) -> int:
@@ -102,20 +147,38 @@ class NAIPDataset(Dataset[dict[str, Any]]):
     def _resolve_files(self, files: Sequence[str | Path] | None) -> list[str]:
         import os
         if files is not None:
-            resolved = sorted(str(path) for path in files)
+            candidates: Iterable[str] = (str(path) for path in files)
         elif self.catalog_path is not None:
             if not self.catalog_path.exists():
                 raise FileNotFoundError(f"Catalog file not found: {self.catalog_path}")
             df = pd.read_csv(self.catalog_path)
             if "path" not in df.columns:
                 raise ValueError(f"Catalog CSV {self.catalog_path} must have a 'path' column.")
-            resolved = sorted(df["path"].astype(str).tolist())
+            candidates = (str(path) for path in df["path"].astype(str).tolist())
         else:
-            resolved = sorted(
+            candidates = (
                 str(path)
                 for path in self.root.rglob("*")
                 if path.is_file() and path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
             )
+
+        # Keep memory bounded for very large roots. Reservoir sampling gives every
+        # discovered file an equal chance of inclusion without first materializing a
+        # 10M-element list. Sorting the final sample makes the selected manifest
+        # deterministic for a fixed subset_seed.
+        if self.max_files is None:
+            resolved = sorted(candidates)
+        else:
+            rng = random.Random(self.subset_seed)
+            reservoir: list[str] = []
+            for count, path in enumerate(candidates):
+                if count < self.max_files:
+                    reservoir.append(path)
+                else:
+                    replacement = rng.randrange(count + 1)
+                    if replacement < self.max_files:
+                        reservoir[replacement] = path
+            resolved = sorted(reservoir)
 
         root_str = str(self.root)
         # Ensure all paths are absolute using fast os.path string operations
@@ -303,7 +366,8 @@ def _split_files_by_parent(
     grouped = defaultdict(list)
     root_str = str(root)
     
-    for path in files:
+    for raw_path in files:
+        path = os.fspath(raw_path)
         parent = os.path.dirname(path)
         group = parent if parent != root_str else path
         grouped[group].append(path)

@@ -1,0 +1,51 @@
+# Validation-only publication protocol.  No test-set path is specified here:
+# the held-out test set must remain untouched until this protocol selects one
+# configuration.
+protocol_name: ctq_publication_v1
+data: configs/poultry_clean_label_subsets/poultry_clean_10percent.yaml
+unlabeled_root: 'E:\NAIP_Dataset_PH\MS_tiles_512_256_jpg'
+init_model: yolo11l-obb.pt
+output_dir: runs/ctq_publication_v1
+device: '0'
+seeds: [7, 17, 42]
+selection_metric: metrics/mAP50-95(B)
+
+baseline:
+  epochs: 100
+  batch: 16
+  imgsz: 640
+  workers: 8
+
+adaptation:
+  epochs: 60
+  batch: 16
+  unlabeled_batch: 16
+  imgsz: 640
+  unlabeled_imgsz: 448
+  pseudo_thresholds: '0.93,0.93'
+  pseudo_iou_threshold: 0.50
+  pseudo_class_margin: 0.05
+  pseudo_warmup_epochs: 5
+  pseudo_rampup_epochs: 10
+
+# This matched control distinguishes pseudo-label benefit from simply running
+# an additional adaptation-length training phase from the same checkpoint.
+control:
+  quality_alpha: 1.0
+  pseudo_obb_weight: 0.0
+  feature_consistency_weight: 0.0
+
+# Full 2x2 quality/pseudo-label grid. Each candidate is run for every seed.
+candidates:
+  - id: alpha1_weight001
+    quality_alpha: 1.0
+    pseudo_obb_weight: 0.01
+  - id: alpha1_weight0025
+    quality_alpha: 1.0
+    pseudo_obb_weight: 0.025
+  - id: alpha2_weight001
+    quality_alpha: 2.0
+    pseudo_obb_weight: 0.01
+  - id: alpha2_weight0025
+    quality_alpha: 2.0
+    pseudo_obb_weight: 0.025
